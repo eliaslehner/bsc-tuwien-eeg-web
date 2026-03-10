@@ -1,0 +1,212 @@
+/* === Reset === */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+  background: #0a0a0a;
+  color: #e0e0e0;
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  overflow: hidden;
+}
+
+/* === Layout === */
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 0.75rem 1.5rem;
+  background: #111;
+  border-bottom: 1px solid #222;
+  flex-shrink: 0;
+}
+
+.header h1 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #fff;
+}
+
+.header-region {
+  font-size: 0.85rem;
+  color: #888;
+}
+
+.header-region strong {
+  color: #6ee7b7;
+}
+
+.content {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* === 3D Viewer === */
+.viewer-container {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+.viewer-container canvas {
+  display: block;
+}
+
+/* Loader */
+.loader {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #0a0a0a;
+  z-index: 10;
+}
+
+.spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid #333;
+  border-top-color: #6ee7b7;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-bottom: 0.75rem;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.loader p {
+  font-size: 0.85rem;
+  color: #888;
+}
+
+/* Tooltip */
+.region-tooltip {
+  position: fixed;
+  display: none;
+  padding: 0.35rem 0.7rem;
+  background: rgba(0, 0, 0, 0.85);
+  color: #6ee7b7;
+  border: 1px solid #333;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  pointer-events: none;
+  z-index: 1000;
+  white-space: nowrap;
+  backdrop-filter: blur(8px);
+}
+
+/* === Sidebar === */
+.sidebar {
+  width: 280px;
+  background: #111;
+  border-left: 1px solid #222;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.sidebar h2 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  padding: 0.75rem 1rem 0.25rem;
+  color: #fff;
+}
+
+.sidebar-subtitle {
+  font-size: 0.75rem;
+  color: #666;
+  padding: 0 1rem 0.75rem;
+  border-bottom: 1px solid #222;
+}
+
+.sidebar-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.5rem 0;
+}
+
+.sidebar-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.sidebar-list::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 2px;
+}
+
+.region-group {
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid #1a1a1a;
+  transition: background 0.15s;
+  cursor: pointer;
+}
+
+.region-group:hover {
+  background: rgba(110, 231, 183, 0.05);
+}
+
+.region-group.region-active {
+  background: rgba(110, 231, 183, 0.08);
+}
+
+.region-name {
+  font-size: 0.78rem;
+  color: #aaa;
+  margin-bottom: 0.3rem;
+  font-weight: 500;
+}
+
+.region-active .region-name {
+  color: #6ee7b7;
+}
+
+.electrode-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.electrode-chip {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  background: #1e1e1e;
+  border: 1px solid #2a2a2a;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  color: #ccc;
+  font-family: 'Consolas', 'Fira Code', monospace;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.electrode-chip:hover {
+  border-color: #6ee7b783;
+  color: #fff;
+  background: #252525;
+}
+
+.region-active .electrode-chip {
+  border-color: #6ee7b783;
+  color: #fff;
+}

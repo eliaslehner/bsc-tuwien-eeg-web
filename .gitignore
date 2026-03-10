@@ -1,0 +1,13 @@
+# Node modules
+node_modules
+
+# Virtual environment
+venv
+
+# Others
+.DS_Store
+.vscode
+
+# Safety
+.env
+*.pyc
