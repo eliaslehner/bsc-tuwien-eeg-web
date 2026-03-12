@@ -1,8 +1,6 @@
-# Node modules
-node_modules
-
 # Virtual environment
 venv
+.venv
 
 # Others
 .DS_Store
@@ -10,4 +8,10 @@ venv
 
 # Safety
 .env
+
+# Python bytecode
 *.pyc
+
+# Frontend
+.next
+node_modules

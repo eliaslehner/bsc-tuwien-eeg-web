@@ -59,7 +59,7 @@ export default function BrainViewer({ onRegionHover, highlightRegion }) {
         arr.set(origColors);
         colors.needsUpdate = true;
         material.transparent = true;
-        material.opacity = 0.25;
+        material.opacity = 0.05;
         material.depthWrite = false;
         material.needsUpdate = true;
 
