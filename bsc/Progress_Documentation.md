@@ -105,3 +105,49 @@ Two visual improvements to `BrainViewer.jsx`:
 **Glow overlay highlight:** The old highlight effect dimmed all non-target vertices to 15% brightness and recoloured target vertices green. This made the rest of the brain nearly invisible. The new approach uses two meshes: the main mesh goes semi-transparent (`opacity: 0.25`) and a separate glow overlay mesh (cloned geometry, emissive material) is shown on top. Only vertices belonging to the highlighted region keep their real positions; all other vertices are collapsed to the origin so their triangles become degenerate and invisible. The emissive material (`emissive: [0.25, 0.55, 0.45]`, `emissiveIntensity: 0.6`) gives the highlighted region a nice glow effect that looks much cleaner than the old dimming approach.
 
 I also changed the normal handling. Instead of always calling `geometry.computeVertexNormals()` after loading the PLY, the frontend now checks if the PLY already has normals baked in by the backend. The backend writes per-vertex normals after `orient_triangles()` and `compute_vertex_normals()`, so they're higher quality than what Three.js would compute on its own (which just averages face normals).
+
+## EEG processing pipeline and frontend overhaul - 19.03.2026
+
+This was the big missing piece — the `backend/eeg/` module was just a placeholder `__init__.py` until now. The goal was to load the actual BCI Competition IV 2a EEG data (or generate realistic synthetic data when the GDF files aren't available), process it into something the browser can visualise, and build out the frontend to match the layout I sketched in the Browser Layout PDF.
+
+### Backend — EEG processing
+
+The BCI Competition IV 2a dataset uses GDF files, which MNE-Python can read directly with `mne.io.read_raw_gdf`. Each file has 25 channels — 22 EEG electrodes in the 10-20 system plus 3 EOG channels for artifact removal. The events are stored as annotations in the GDF and MNE extracts them as string keys (`'769'`, `'770'`, etc.) mapped to internal integer codes. This string-key quirk is important because when you create epochs you have to use the string form, not the original GDF integer.
+
+I split the EEG code into three modules:
+
+**`loader.py`** handles GDF loading and event extraction. One thing I had to deal with was the channel naming — GDF files from this dataset sometimes have `'EEG-'` prefixes on the channel names (like `'EEG-Fz'` instead of just `'Fz'`), so `setup_channels` strips those and also sets the last 3 channels to `'eog'` type so MNE knows what they are.
+
+**`processing.py`** does the actual signal processing. For EOG artifact removal I used `mne.preprocessing.EOGRegression` which fits a linear regression of the 3 EOG channels onto the EEG and subtracts the predicted component. The dataset documentation specifically recommends linear regression as one of the methods, and it's simpler than ICA (which would need manual component inspection). If the regression fails for whatever reason (flat EOG channels, etc.), it falls back to a 2 Hz highpass filter which at least removes the slow EOG drifts.
+
+The preprocessing order matters: EOG regression first (needs both EEG and EOG channels in the raw), then pick only the 22 EEG channels, then bandpass filter 0.5–40 Hz. After that I create epochs from −0.5 to +4.0 s relative to the cue onset. The −0.5 to 0 s window is the baseline period (fixation cross, no motor imagery yet).
+
+For artifact trials — the dataset marks rejected trials with event type 1023. I find those events and check which of my cue-onset epochs fall within an 8 s window of a rejection marker, then drop those epochs. It's not perfectly precise (the 1023 event might not be at exactly the same sample as the cue) but the 8 s window is wide enough to catch it.
+
+The actual feature extraction uses the Hilbert transform approach: bandpass filter the epochs to the target frequency band (mu: 8–13 Hz, beta: 13–30 Hz), apply `scipy.signal.hilbert` to get the analytic signal, square the absolute value for instantaneous power, average across trials per class, then express as ERD/ERS percentage relative to the baseline. I chose Hilbert over Morlet wavelets because it's faster and gives a clean time-varying power estimate that's good enough for visualisation. The full-resolution data has 1125 samples per epoch (250 Hz × 4.5 s) which I downsample to 90 time bins for the JSON — one every ~50 ms, keeps the file at ~128 KB.
+
+**`export.py`** builds the JSON and also has the synthetic data generator. When no GDF files are in `data/eeg/`, the pipeline generates fake-but-realistic ERD/ERS patterns. The synthetic data models the known spatial properties of motor imagery: left hand imagination produces contralateral ERD over right hemisphere channels (C4, FC4, CP4), right hand over left hemisphere, feet over midline (Cz, FCz, CPz), and tongue is more distributed. The lateralisation is derived from the channel naming convention — odd-numbered electrodes are left hemisphere, even are right, and channels ending in `z` are midline. The temporal shape is a sigmoid onset with exponential decay, which matches the typical ERD time course.
+
+The orchestrator in `__init__.py` ties it all together: it receives the electrode mappings from step 5 of the main pipeline (so it knows which channel maps to which Destrieux region) and either processes a real GDF or generates synthetic data, then exports to `frontend/public/data/eeg_data.json`.
+
+I also added 10 new configuration fields to `config.py` for the EEG processing — data directory, subject/session selection, epoch window, baseline window, frequency bands, downsampling, and output filename. The pipeline in `main.py` is now 6 steps instead of 5, with step 6 being the EEG processing. The electrode output from step 5 is captured and passed forward so the channel-to-region mapping doesn't need to be re-read from disk.
+
+### Frontend — new three-panel layout
+
+The old layout was just the 3D brain viewer with a sidebar listing electrodes grouped by region. The new layout matches the PDF sketch: a left panel for dataset details and controls, the 3D viewer in the centre, and a timeline at the bottom.
+
+**`DatasetPanel.jsx`** (left panel) shows the dataset metadata (name, subject, channel count, sample rate) in a compact grid layout. Below that are four toggle buttons for the motor imagery classes — each button has a coloured indicator dot, the class label, and the trial count showing clean/total. Clicking a class toggles it in and out of the heatmap average. Below that is the frequency band selector (mu vs beta) and a heatmap on/off toggle. Each section has a small `?` icon that opens an explanation popup.
+
+**`Timeline.jsx`** (bottom) has two tracks stacked vertically. The top one is a thin session events bar that shows all 288 trial events as tiny coloured ticks spread across the recording duration — this gives a visual sense of the session structure. The bottom track is the epoch time scrubber, which is just a styled `<input type="range">` from −0.5 to 4.0 s. A dark overlay marks the baseline period and a vertical line marks the cue onset at t=0. There's a play/pause button that auto-advances the time at ~12 fps so you can watch the heatmap animate through the trial. For the play icon I used pure CSS (a border-based triangle for play, two bars for pause) instead of emoji since the design should stay clean.
+
+One thing I had to handle in the timeline was the stale closure problem with `setInterval`. The play interval captures the `currentTimeIndex` from props, but since it's in a closure it would always see the same value. I fixed it with a ref (`indexRef`) that's updated on every render, so the interval callback always reads the latest index.
+
+**`BrainViewer.jsx`** got the heatmap overlay added as a new `useEffect`. The `computeHeatmapColors` function takes the vertex region IDs (from `region_metadata.json`), the EEG data, and the current UI state (selected classes, band, time index), then builds a `Float32Array` of RGB values. For each vertex it looks up the region ID, checks if any electrode maps to that region, gets the ERD/ERS value, and computes a colour from a diverging blue-grey-red scale. Blue for desynchronisation (negative ERD), red for synchronisation (positive ERS), dark grey for neutral or unmapped regions. The scale auto-normalises to the maximum absolute value so the full colour range is always used.
+
+The tooltip now also shows the ERD/ERS percentage when you hover in heatmap mode — it reads from a `heatmapValuesRef` that's updated by the heatmap effect. So you see something like `"L G_precentral (-23.4%)"` which is useful for understanding the spatial pattern.
+
+**`InfoPopup.jsx`** is a tiny component — just a circular `?` button that toggles a popup with descriptive text. Clicking outside closes it via a `mousedown` listener. I use it next to every section header in the dataset panel and in the timeline for contextual help.
+
+The old `ElectrodeSidebar.jsx` is still in the codebase but no longer imported. The hover-to-identify-region functionality still works through the tooltip on the brain itself, which was always independent of the sidebar.
+
+**`globals.css`** was rewritten for the new layout. The main structural change is that `.content` is now a flex row with the dataset panel (fixed 260px) and the viewer (flex: 1), and the timeline sits below as a fixed-height bar. The class filter buttons, band selector, heatmap toggle, and info popup all have new styles following the same dark theme (background `#1a1a1a`, borders `#2a2a2a`, accent `#6ee7b7`). The epoch slider is custom-styled with a green thumb and dark track. Everything uses the same 0.15s transitions as before.

@@ -69,6 +69,19 @@ class Config:
         ).split(',')
     )
 
+    # --- EEG Processing ---
+    eeg_data_dir: str = os.getenv('EEG_DATA_DIR', './data/eeg')
+    eeg_subject: str = os.getenv('EEG_SUBJECT', 'A01')
+    eeg_session: str = os.getenv('EEG_SESSION', 'T')
+    eeg_epoch_tmin: float = float(os.getenv('EEG_EPOCH_TMIN', '-0.5'))
+    eeg_epoch_tmax: float = float(os.getenv('EEG_EPOCH_TMAX', '4.0'))
+    eeg_baseline_tmin: float = float(os.getenv('EEG_BASELINE_TMIN', '-0.5'))
+    eeg_baseline_tmax: float = float(os.getenv('EEG_BASELINE_TMAX', '0.0'))
+    eeg_mu_band: tuple = (8, 13)
+    eeg_beta_band: tuple = (13, 30)
+    eeg_downsample_bins: int = int(os.getenv('EEG_DOWNSAMPLE_BINS', '90'))
+    eeg_output_filename: str = os.getenv('EEG_OUTPUT_FILENAME', 'eeg_data.json')
+
     # --- Derived Paths ---
     @property
     def pointcloud_ply_path(self) -> str:
@@ -85,3 +98,7 @@ class Config:
     @property
     def output_json_path(self) -> str:
         return os.path.join(self.frontend_data_dir, self.output_json_filename)
+
+    @property
+    def eeg_output_path(self) -> str:
+        return os.path.join(self.frontend_data_dir, self.eeg_output_filename)

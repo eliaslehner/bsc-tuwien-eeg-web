@@ -31,35 +31,40 @@ def run(config=None):
     print("=" * 60)
 
     # ── Step 1: Load NIfTI volumes ──
-    print("\n[1/5] Loading NIfTI volumes")
+    print("\n[1/6] Loading NIfTI volumes")
     brain_nii = load_nii_image(config.brain_nii_path)
     _, masked_volume, brain_mask = load_masked_volume(
         config.brain_t1w_nii_path, config.brain_mask_nii_path,
     )
 
     # ── Step 2: Destrieux atlas + gap-fill ──
-    print("\n[2/5] Loading Destrieux atlas & gap-filling")
+    print("\n[2/6] Loading Destrieux atlas & gap-filling")
     atlas_volume, names_map = fetch_and_resample_atlas(brain_nii)
     atlas_volume, _ = gap_fill_labels(atlas_volume, brain_mask)
 
     # ── Step 3: Build region palette ──
-    print("\n[3/5] Building region palette")
+    print("\n[3/6] Building region palette")
     sorted_ids, full_names, palette, id_to_palette_idx = build_region_palette(names_map)
     print(f"    {len(full_names)} regions in palette")
 
     # ── Step 4: Generate mesh (Marching Cubes) with forward-carried region IDs ──
-    print("\n[4/5] Mesh generation (Marching Cubes) + region mapping")
+    print("\n[4/6] Mesh generation (Marching Cubes) + region mapping")
     vertex_region_ids = generate_and_export(
         config, masked_volume, atlas_volume, id_to_palette_idx, palette,
     )
 
     # ── Step 5: Electrode mapping & JSON export ──
-    print("\n[5/5] Electrode mapping & JSON export")
-    run_electrode_pipeline(
+    print("\n[5/6] Electrode mapping & JSON export")
+    electrode_output = run_electrode_pipeline(
         config, brain_nii, atlas_volume, names_map, None,
         sorted_ids, full_names, palette, id_to_palette_idx,
         vertex_region_ids=vertex_region_ids,
     )
+
+    # ── Step 6: EEG processing & export ──
+    print("\n[6/6] EEG processing & export")
+    from backend.eeg import run_eeg_pipeline
+    run_eeg_pipeline(config, electrode_mappings=electrode_output.get('electrodes', []))
 
     # ── Optional: Launch viewer ──
     if config.show_viewer:

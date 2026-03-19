@@ -12,6 +12,7 @@
 9. [Viewer — `viewer/viewer.py`](#9-viewer--viewerviewerpy)
 10. [Pipeline Entry Point — `main.py`](#10-pipeline-entry-point--mainpy)
 11. [Frontend — Browser 3D Brain Viewer](#11-frontend--browser-3d-brain-viewer)
+12. [EEG Processing — `eeg/`](#12-eeg-processing--eeg)
 
 ---
 
@@ -20,6 +21,8 @@
 - Nilearn: https://nilearn.github.io/stable/index.html
 - Open3D: https://www.open3d.org/docs/release/
 - scikit-image (Marching Cubes): https://scikit-image.org/docs/stable/api/skimage.measure.html#skimage.measure.marching_cubes
+- MNE-Python: https://mne.tools/stable/index.html
+- SciPy (Hilbert transform): https://docs.scipy.org/doc/scipy/reference/generated/scipy.signal.hilbert.html
 
 ## 1. Backend Architecture Overview
 
@@ -47,7 +50,10 @@ backend/
 ├── viewer/
 │   └── viewer.py            Interactive Open3D viewer
 ├── eeg/
-│   └── __init__.py          (placeholder for future EEG processing)
+│   ├── __init__.py          Pipeline orchestrator (run_eeg_pipeline)
+│   ├── loader.py            GDF loading via MNE-Python
+│   ├── processing.py        EOG removal, epoching, ERD/ERS
+│   └── export.py            JSON builder + synthetic data generator
 └── testing/
     └── __init__.py          (placeholder for tests)
 ```
@@ -85,8 +91,9 @@ The dataclass groups configuration into categories:
 - **Marching Cubes Parameters** — `mc_level` (isosurface level, default 0.15), `mc_step_size` (voxel step, default 1), and `mesh_target_faces` (decimation target, 0 = no decimation). These are new — the old code didn't use Marching Cubes at all.
 - **Export Options** — `copy_mapped_mesh_to_frontend` flag to auto-copy the mapped PLY into the frontend's `public/data/` directory.
 - **EEG Channels** — the 22-channel list is now a comma-separated string in `.env` instead of a Python list literal.
+- **EEG Processing** — directory for GDF data files, subject/session identifiers, epoch time window (default −0.5 to 4.0 s), baseline window (−0.5 to 0 s), frequency band definitions (mu: 8–13 Hz, beta: 13–30 Hz), downsampling bin count (default 90), and output filename. These control the EEG processing pipeline in `backend/eeg/`.
 
-Derived paths like `mapped_mesh_ply_path` and `output_json_path` are computed as `@property` methods that join directory + filename.
+Derived paths like `mapped_mesh_ply_path`, `output_json_path`, and `eeg_output_path` are computed as `@property` methods that join directory + filename.
 
 ### Design Decisions
 
@@ -318,8 +325,9 @@ Single-command entry point that runs the entire brain visualisation pipeline in 
 2. **Destrieux atlas + gap-fill** — fetches and resamples the atlas, then gap-fills unlabelled voxels.
 3. **Build region palette** — creates the colour lookup table.
 4. **Mesh generation** — runs Marching Cubes, decimates, assigns region IDs (forward-carry), colours vertices, centres, flips Y, exports PLY.
-5. **Electrode mapping & JSON export** — maps electrodes, reuses the pre-computed vertex region IDs, and writes `region_metadata.json`.
-6. **Optional viewer** — if `SHOW_VIEWER=true` in `.env`, launches the Open3D viewer.
+5. **Electrode mapping & JSON export** — maps electrodes, reuses the pre-computed vertex region IDs, and writes `region_metadata.json`. The return value (electrode mappings) is captured and passed forward to step 6.
+6. **EEG processing & export** — loads GDF data (or generates synthetic data), preprocesses, computes ERD/ERS, and writes `eeg_data.json`. Receives the electrode mappings from step 5 so it can build the channel-to-region mapping for the frontend heatmap.
+7. **Optional viewer** — if `SHOW_VIEWER=true` in `.env`, launches the Open3D viewer.
 
 ### Design Decisions
 
@@ -327,6 +335,7 @@ Single-command entry point that runs the entire brain visualisation pipeline in 
 |---|---|
 | **Single entry point** | `python -m backend.main` runs everything. No more remembering which script to run first. |
 | **Forward-pass of vertex IDs** | `generate_and_export` returns the per-vertex region IDs which are passed directly to `run_electrode_pipeline`, avoiding redundant computation. |
+| **Forward-pass of electrode mappings** | `run_electrode_pipeline` returns its output dict, and the `electrodes` list is passed to `run_eeg_pipeline` so the channel-to-region mapping doesn't need to be recomputed or read back from disk. |
 
 ---
 
@@ -334,7 +343,7 @@ Single-command entry point that runs the entire brain visualisation pipeline in 
 
 ### Purpose
 
-A Next.js web application that renders the Destrieux-mapped brain mesh in 3D, lets the user rotate/zoom/pan the model, identifies the brain region under the cursor on hover, and displays a sidebar listing all 22 EEG electrodes grouped by their mapped brain region. Hovering an electrode group in the sidebar highlights the corresponding region on the 3D model.
+A Next.js web application that renders the Destrieux-mapped brain mesh in 3D with an EEG activity heatmap overlay. The user can rotate/zoom/pan the model, identify brain regions on hover, filter by motor imagery class, select a frequency band, and scrub through the averaged trial epoch to see how the ERD/ERS pattern evolves over time. A left panel shows dataset details and controls, the centre area contains the 3D viewer, and a bottom timeline provides session overview and epoch time scrubbing.
 
 ### Technology Stack
 
@@ -350,16 +359,20 @@ A Next.js web application that renders the Destrieux-mapped brain mesh in 3D, le
 ```
 frontend/
 ├── app/
-│   ├── layout.js          Root layout, metadata title/description
-│   ├── page.js             Main page, state management
-│   ├── globals.css          Full CSS design system
+│   ├── layout.js              Root layout, metadata title/description
+│   ├── page.js                 Main page, state management, three-panel layout
+│   ├── globals.css              Full CSS design system
 │   └── components/
-│       ├── BrainViewer.jsx  Three.js 3D renderer + hover/highlight + SSAO
-│       └── ElectrodeSidebar.jsx  Electrode list grouped by region
+│       ├── BrainViewer.jsx      Three.js 3D renderer + SSAO + heatmap overlay
+│       ├── DatasetPanel.jsx     Left panel: dataset info, class filters, band selector
+│       ├── Timeline.jsx         Bottom panel: session events + epoch scrubber + playback
+│       ├── InfoPopup.jsx        Small "?" icon that opens an explanation popup
+│       └── ElectrodeSidebar.jsx (kept but unused — was the old electrode list sidebar)
 ├── public/
 │   └── data/
 │       ├── brain_mesh_destrieux_mapped.ply   Coloured brain mesh
-│       └── region_metadata.json              Electrode + region data
+│       ├── region_metadata.json              Electrode + region data + vertex IDs
+│       └── eeg_data.json                     EEG ERD/ERS data + session events
 ├── package.json
 ├── next.config.mjs
 └── jsconfig.json
@@ -369,57 +382,89 @@ frontend/
 
 #### `page.js` — Application Root
 
-Unchanged from the old version. A `'use client'` component that composes `BrainViewer` and `ElectrodeSidebar`. Manages two state variables:
+A `'use client'` component that composes the three-panel layout: `DatasetPanel` (left), `BrainViewer` (centre), and `Timeline` (bottom). Manages seven state variables:
 
-- `activeRegion` — set by hovering on the 3D brain (via `onRegionHover` callback)
-- `sidebarRegion` — set by hovering an electrode group in the sidebar (via `onSidebarHover` callback)
+- `eegData` — the loaded `eeg_data.json` (fetched on mount)
+- `selectedClasses` — a `Set` of active motor imagery class IDs (all four enabled by default)
+- `selectedBand` — `'mu'` or `'beta'` (default: `'mu'`)
+- `currentTimeIndex` — index into the downsampled time array (drives the heatmap)
+- `playing` — whether the timeline auto-advances
+- `activeRegion` — brain region name from 3D hover
+- `heatmapEnabled` — toggles between atlas region colours and ERD/ERS heatmap
 
-The displayed region is `sidebarRegion || activeRegion` — sidebar hover takes priority. Both callbacks are wrapped in `useCallback` to avoid unnecessary re-renders.
+All callbacks are wrapped in `useCallback` to avoid unnecessary child re-renders. The class toggle creates a new `Set` on each call so React detects the state change by reference.
 
-#### `BrainViewer.jsx` — Three.js 3D Renderer
+#### `BrainViewer.jsx` — Three.js 3D Renderer + Heatmap
 
-This component has been significantly enhanced compared to the old version. The base scene setup (renderer, camera, lights, controls, raycasting) is the same, but three major features were added:
+The base scene setup (renderer, camera, lights, controls, raycasting, SSAO post-processing) is unchanged from the previous version. The main additions are heatmap rendering and an enhanced tooltip.
 
-**1. SSAO Post-Processing (Screen-Space Ambient Occlusion)**
+**Heatmap Overlay**
 
-The old code rendered the scene directly via `renderer.render(scene, camera)`. The new code uses a Three.js `EffectComposer` pipeline with three passes:
-- `RenderPass` — standard scene render
-- `SSAOPass` — screen-space ambient occlusion that darkens crevices and sulci on the brain surface, adding visual depth. Parameters are tuned for the brain mesh scale: `kernelRadius: 12` (in voxel units), `kernelSize: 64` samples, `intensity: 1.2`. The `normalMaterial.side` is set to `DoubleSide` to match the brain mesh material, otherwise the SSAO depth pass would cull back-faces and create dark artifacts.
-- `OutputPass` — handles tone mapping and colour space conversion.
+A dedicated `useEffect` reacts to changes in `heatmapEnabled`, `selectedClasses`, `selectedBand`, `currentTimeIndex`, and `eegData`. When the heatmap is enabled, it computes per-vertex colours via the `computeHeatmapColors` helper function:
 
-The animation loop now calls `composer.render()` instead of `renderer.render()`, and the resize handler also updates the composer size.
+1. For each of the 22 channels, average the ERD/ERS values across all selected classes at the current time index.
+2. Map each channel to its brain region via the `channel_regions` dict from the EEG JSON.
+3. For regions with multiple electrodes, average their values.
+4. For each mesh vertex, look up its region ID (from `vertex_region_ids`), find the region's ERD/ERS value, and compute a colour from a diverging scale:
+   - **Blue** (ERD / desynchronisation / negative values) — `rgb(0.10, 0.40, 0.90)` at maximum
+   - **Dark grey** (neutral / zero) — `rgb(0.15, 0.15, 0.15)`
+   - **Red** (ERS / synchronisation / positive values) — `rgb(0.90, 0.20, 0.10)` at maximum
+5. Vertices in regions that have no electrode mapping stay dark grey (`rgb(0.12, 0.12, 0.12)`).
 
-**2. Glow Overlay Mesh**
+The colour scale is normalised to the maximum absolute value across all mapped regions, so the full blue-to-red range is always used regardless of the actual ERD/ERS magnitude.
 
-The old highlight effect dimmed non-target vertices to 15% brightness and coloured target vertices in green. This made the non-highlighted regions very dark and hard to read.
+When the heatmap is disabled, the original vertex colours (stored in `origColorsRef`) are restored.
 
-The new approach uses a two-mesh system:
-- The **main mesh** keeps its original colours but becomes semi-transparent (`opacity: 0.25`, `depthWrite: false`) when a region is highlighted.
-- A **glow overlay mesh** (cloned from the main mesh geometry) is shown on top. It uses an emissive `MeshPhongMaterial` (`emissive: [0.25, 0.55, 0.45]`, `emissiveIntensity: 0.6`) that gives the highlighted region a glowing appearance. Only vertices belonging to the target region keep their real positions; all other vertices are collapsed to the origin (`HIDDEN = 0`), making their triangles degenerate and invisible.
+**Enhanced Tooltip**
 
-This produces a much cleaner visual effect — the highlighted region appears to glow through a translucent ghost of the rest of the brain.
+The hover handler now also checks `heatmapValuesRef` — a ref that stores the current per-region ERD/ERS values computed by the heatmap effect. When hovering in heatmap mode, the tooltip shows both the region name and the ERD/ERS percentage (e.g. `"L G_precentral (-23.4%)"` ).
 
-**3. Backend-Baked Normals**
+**SSAO Post-Processing** and **backend-baked normals** are unchanged from the previous version.
 
-The old code always called `geometry.computeVertexNormals()` after loading the PLY. The new code checks if the PLY already contains normals (`geometry.attributes.normal`) and only computes them as a fallback. The backend now bakes high-quality normals into the PLY via Open3D's `compute_vertex_normals()` after `orient_triangles()`, so using those directly preserves the surface detail that Three.js's own normal averaging would smooth over.
+#### `DatasetPanel.jsx` — Left Panel
 
-**Hover detection** and **cleanup** are otherwise unchanged from the old version. The cleanup now additionally disposes the `EffectComposer`.
+Fetches its data from the `eegData` prop (loaded by `page.js`). Divided into four sections:
 
-#### `ElectrodeSidebar.jsx` — Electrode List
+1. **Dataset Details** — grid showing name, subject ID, channel count, and sample rate. A `?` info popup shows the full dataset description text.
+2. **Motor Imagery Classes** — four toggle buttons (left hand, right hand, feet, tongue), each with a coloured indicator dot matching the class colour, the class label, and a trial count (clean/total). Clicking a button toggles that class in the `selectedClasses` set. The heatmap shows the average across all selected classes.
+3. **Frequency Band** — two toggle buttons for mu (8–13 Hz) and beta (13–30 Hz). Only one band is active at a time.
+4. **Heatmap Toggle** — a single button that switches between atlas region colours and ERD/ERS heatmap mode.
 
-Unchanged from the old version. Fetches `/data/region_metadata.json` on mount, groups electrodes by `region_name`, sorts alphabetically, and renders as hoverable region groups with electrode chips.
+#### `Timeline.jsx` — Bottom Panel
+
+Contains two visualisation tracks and playback controls:
+
+1. **Session events bar** — a thin horizontal track showing all 288 trial events from the recording session as coloured ticks. Each tick's horizontal position corresponds to its timestamp relative to the session duration, and its colour matches the motor imagery class. Events from deselected classes are hidden.
+2. **Epoch scrubber** — an HTML `<input type="range">` slider spanning the epoch time window (−0.5 to 4.0 s). A semi-transparent overlay marks the baseline period, and a vertical line marks the cue onset at t=0. Dragging the slider updates `currentTimeIndex` which drives the brain heatmap. Below the slider, labels show the time axis bounds and the cue position.
+
+A **play/pause button** (CSS-only triangle/bars, no emoji) auto-advances the time index at ~12.5 fps (80 ms interval) using `setInterval`. The current time in seconds is displayed on the right in monospace font.
+
+The play button uses a `useRef` to track the current index inside the interval callback, avoiding the stale closure problem that would occur if it read `currentTimeIndex` directly from props.
+
+#### `InfoPopup.jsx` — Contextual Help
+
+A small circular `?` button that opens an absolutely-positioned popup with explanatory text. Clicking outside the popup closes it (via a `mousedown` listener added in a `useEffect`). Used next to each section header in the dataset panel and in the timeline.
+
+#### `ElectrodeSidebar.jsx` — (Unused)
+
+The old electrode list sidebar is kept in the codebase but no longer imported by `page.js`. Hovering the brain still works via the tooltip — the sidebar is no longer needed for region identification.
 
 ### CSS Design System (`globals.css`)
 
-Unchanged from the old version.
+The CSS was restructured for the three-panel layout.
 
 | Element | Style |
 |---|---|
 | **Background** | `#0a0a0a` (near-black), borders `#222` |
-| **Accent colour** | `#6ee7b7` (mint green) — used for active region text, tooltip text, hover borders, spinner |
-| **Font** | `Segoe UI` / system-ui with `Consolas` / `Fira Code` for electrode chips |
-| **Layout** | Full-height flexbox: header (fixed), content (flex row: viewer + sidebar) |
-| **Sidebar** | Fixed 280px width, scrollable list with 4px custom scrollbar |
+| **Accent colour** | `#6ee7b7` (mint green) — used for active region text, tooltip text, hover borders, spinner, active band/heatmap buttons, slider thumb, time display |
+| **Font** | `Segoe UI` / system-ui with `Consolas` / `Fira Code` for monospace elements (trial counts, time display) |
+| **Layout** | Full-height flexbox column: header (fixed) → content (flex row: dataset panel + viewer, flex: 1) → timeline (fixed) |
+| **Dataset panel** | Fixed 260px width, scrollable, sections separated by `#1a1a1a` borders |
+| **Class buttons** | Flex row with coloured indicator, label, and trial count. Active state has green-tinted background |
+| **Band/heatmap buttons** | Toggle style with active state using `#6ee7b7` accent border and text |
+| **Info popup** | 18px circle with `?`, absolute-positioned dropdown on click, `box-shadow` for depth |
+| **Timeline** | Bottom bar with play button (32px circle), two stacked tracks (session bar + epoch scrubber), time readout |
+| **Epoch slider** | Custom-styled `<input type="range">` with `#6ee7b7` thumb, `#2a2a2a` track |
 | **Loader** | Absolute overlay with CSS-only spinning border animation |
 | **Tooltip** | `position: fixed`, `backdrop-filter: blur(8px)`, semi-transparent black background, rounded corners |
 | **Transitions** | 0.15s ease on background, border-color, and color for interactive elements |
@@ -430,11 +475,167 @@ Unchanged from the old version.
 |---|---|
 | **Vanilla Three.js (no React-Three-Fiber)** | Lower abstraction overhead, easier to control the render loop and event handling, avoids extra dependencies for a single-mesh viewer. |
 | **SSAO post-processing** | Makes the brain surface look more three-dimensional by darkening sulci (grooves). The brain mesh has lots of crevices that benefit from ambient occlusion. |
-| **Glow overlay instead of vertex dimming** | Cleaner visual — the non-highlighted regions remain recognisable (semi-transparent) instead of becoming nearly black. The emissive glow makes the target region pop out more. |
 | **Backend-baked normals** | Avoids Three.js's vertex normal averaging which would smooth over detail. The backend's normals are computed after triangle orientation, so they're more accurate. |
 | **Vertex-colour Phong material** | The PLY file already contains per-vertex region colours from the backend, so vertex colouring is both simpler and more efficient than texture mapping. Phong shading adds surface depth. |
 | **Per-vertex region ID lookup** | O(1) lookup via array index — no spatial search needed at hover time. The array is ~150 k entries with Marching Cubes (larger than the ~20 k from Alpha Shapes), still small enough to fetch as part of the JSON. |
-| **Separate highlight `useEffect`** | Decouples the highlight logic from the main Three.js setup effect, making it reactive to `highlightRegion` prop changes without tearing down the scene. |
+| **Separate heatmap `useEffect`** | Decouples the heatmap colouring from the main Three.js setup effect. The heatmap effect runs on every time/class/band change without tearing down the scene. |
+| **Region-based heatmap (not interpolated)** | Each electrode maps to a Destrieux region, and all vertices in that region get the electrode's ERD/ERS value. This is simple and leverages the existing electrode-to-region mapping. Spatial interpolation (e.g. spherical splines) could be added later for smoother gradients. |
+| **Diverging blue-red colour scale** | Matches the established EEG convention: blue for desynchronisation (ERD), red for synchronisation (ERS). The neutral centre is dark grey rather than white to fit the dark theme. |
 | **`useCallback` for parent callbacks** | Prevents child component re-renders when the parent re-renders for unrelated state changes. |
+| **Set for selectedClasses** | A `Set` provides O(1) `has`/`add`/`delete` for the class toggle. React detects state changes by reference, and the toggle callback always creates a new `Set`, so this works correctly with `useState`. |
+| **Static JSON data files** | Both `region_metadata.json` and `eeg_data.json` are served as static files from `public/data/`. No running backend server is needed — the data is pre-computed when the pipeline runs. Files are small enough to browser-cache. |
 | **No build-time static generation** | The page is `'use client'` because the Three.js scene requires browser APIs (`WebGLRenderer`, `requestAnimationFrame`). |
-| **Single JSON data file** | Both `BrainViewer` and `ElectrodeSidebar` fetch the same `region_metadata.json` independently. The file is small and gets browser-cached on the first request. |
+| **Info popups instead of dedicated panel** | Small `?` icons next to section headers open inline explanation text. This keeps the UI compact without needing a separate help panel or modal system. |
+
+---
+
+## 12. EEG Processing — `eeg/`
+
+### Purpose
+
+Processes EEG data from the BCI Competition IV 2a dataset (Graz motor imagery) and exports a JSON file that the frontend uses to render heatmaps, event timelines, and class-filtered visualisations. The module is designed to work in batch mode — all processing happens upfront when the pipeline runs, and the frontend fetches the pre-computed results as a static JSON file.
+
+When no GDF data files are available, the module generates synthetic demo data with realistic spatial and temporal ERD/ERS patterns so the frontend can be developed and tested independently.
+
+### Module Structure
+
+```
+backend/eeg/
+├── __init__.py          Pipeline orchestrator (run_eeg_pipeline)
+├── loader.py            GDF file loading via MNE-Python
+├── processing.py        Preprocessing + feature extraction
+└── export.py            JSON builder + synthetic data generator
+```
+
+### Dataset — BCI Competition IV 2a
+
+The dataset contains cue-based motor imagery EEG from 9 subjects. Each subject performed four tasks: imagination of left hand movement (class 1), right hand (class 2), both feet (class 3), and tongue (class 4). Data was recorded with 22 Ag/AgCl EEG electrodes plus 3 EOG channels at 250 Hz. Each session consists of 6 runs with 48 trials per run (12 per class), totalling 288 trials per session. The trial timing is: fixation cross at t=0, cue arrow at t=2 s, motor imagery from t=2 s to t=6 s, break until ~t=8 s.
+
+The data is stored in GDF format. Event types 769–772 mark the cue onsets for the four classes, and event type 1023 marks trials flagged as containing artifacts by expert scoring.
+
+### Key Functions
+
+#### `loader.py`
+
+##### `load_gdf(filepath)`
+
+Loads a GDF file using `mne.io.read_raw_gdf` with `preload=True`. Returns the raw MNE object, the events array (extracted via `mne.events_from_annotations`), and the event_id mapping. MNE's GDF reader stores event types as string annotations (e.g. `'769'`), so the event_id dict maps these strings to MNE's internal integer codes.
+
+##### `setup_channels(raw)`
+
+Sets proper channel types on the raw object. The GDF files have 25 channels — the first 22 are EEG, the last 3 are EOG. Channel names may have `'EEG-'` or `'EOG-'` prefixes from the GDF header which are stripped. The EOG channels are marked with `raw.set_channel_types` so that MNE's artifact removal tools can identify them.
+
+##### `extract_session_events(events, event_id, sfreq)`
+
+Builds a list of motor imagery cue events with their sample positions and timestamps. Only events matching the four class codes (769–772) are included. This list is used by the frontend's session timeline to show coloured event markers across the recording duration.
+
+##### `get_trial_counts(events, event_id)`
+
+Counts total trials per class from the event stream. Used to populate the dataset metadata (e.g. "72 trials per class").
+
+#### `processing.py`
+
+##### `remove_eog_artifacts(raw, eeg_channels, eog_channels)`
+
+Removes EOG contamination from the EEG using `mne.preprocessing.EOGRegression`, which fits a linear regression model of the 3 EOG channels onto the 22 EEG channels and subtracts the predicted EOG component. This is the approach recommended by the dataset documentation ("linear regression"). Falls back to a 2 Hz highpass filter if the regression fails (e.g. if the EOG channels are flat or missing).
+
+##### `preprocess_raw(raw, eeg_channels, eog_channels)`
+
+Runs the full preprocessing sequence: EOG artifact removal → pick EEG channels only → bandpass filter (0.5–40 Hz). The order matters — EOG regression needs both EEG and EOG channels present, so channel picking happens after.
+
+##### `create_epochs(raw, events, event_id, tmin, tmax)`
+
+Creates MNE `Epochs` around the motor imagery cue events (769–772) with the specified time window (default: −0.5 to +4.0 s relative to cue onset). The baseline period (−0.5 to 0 s) captures the fixation-cross rest state before the cue appears.
+
+Artifact rejection works by finding all events with type 1023 (expert-marked rejected trials) in the original event stream, then identifying which epochs fall within the same trial window (±8 s). Those epochs are dropped via `epochs.drop()` with reason `'artifact'`.
+
+##### `compute_band_erd_ers(epochs, l_freq, h_freq, baseline_tmin, baseline_tmax)`
+
+Computes Event-Related Desynchronisation / Synchronisation (ERD/ERS) for a given frequency band. The steps are:
+
+1. For each motor imagery class, select the corresponding epochs.
+2. Bandpass filter the epochs to the target band (e.g. 8–13 Hz for mu).
+3. Apply the Hilbert transform (`scipy.signal.hilbert`) to get the analytic signal, then take |analytic|² for instantaneous power.
+4. Average power across all trials of that class.
+5. Compute baseline power as the mean over the baseline time window.
+6. Express ERD/ERS as percentage change: `(power − baseline) / baseline × 100`.
+
+Negative values indicate desynchronisation (ERD), which is the expected pattern during motor imagery — the sensorimotor rhythm is suppressed when the subject imagines movement. Positive values indicate synchronisation (ERS), sometimes seen as a post-movement rebound.
+
+Returns a dict mapping class names to (n_channels, n_times) arrays and the corresponding time vector.
+
+##### `downsample_timecourse(data, times, n_bins)`
+
+Downsamples the ERD/ERS time courses to a fixed number of bins (default 90) for JSON export. Uses `np.linspace` to pick evenly spaced indices from the full-resolution data. At 250 Hz with a 4.5 s epoch, the raw data has 1125 time points — downsampling to 90 bins (one every ~50 ms) keeps the JSON small (~128 KB total) while preserving the temporal structure.
+
+#### `export.py`
+
+##### `build_eeg_json(dataset_info, session_events, erd_ers_data, channel_regions)`
+
+Assembles the complete JSON structure that the frontend consumes. The structure contains:
+
+- `dataset` — metadata (name, subject, sample rate, channels, per-class trial counts)
+- `trial_timeline` — epoch time window and baseline period
+- `events` — all 288 session events with timestamps and class labels
+- `erd_ers` — per-band (mu, beta) ERD/ERS data as 2D arrays [n_channels × n_times] for each class
+- `channel_regions` — maps each channel name to its Destrieux region ID and name (from the electrode pipeline)
+
+All numpy arrays are converted to nested Python lists with values rounded to 2 decimal places.
+
+##### `generate_synthetic_data(channels, channel_regions)`
+
+Generates realistic-looking synthetic ERD/ERS data when no GDF files are available. The synthetic patterns model the known spatial characteristics of motor imagery:
+
+- **Left hand imagery** — contralateral ERD over right hemisphere channels (C4, FC4, CP4)
+- **Right hand imagery** — contralateral ERD over left hemisphere channels (C3, FC3, CP3)
+- **Feet imagery** — ERD concentrated over central/midline channels (Cz, FCz, CPz)
+- **Tongue imagery** — more distributed, weaker pattern
+
+The temporal envelope uses a sigmoid onset at ~0.3 s post-cue with exponential decay, matching the typical ERD time course observed in real motor imagery data. Channel lateralisation is determined by the electrode numbering convention (odd numbers = left hemisphere, even = right, `z` suffix = midline). Small Gaussian noise is added for visual realism.
+
+Also generates 288 synthetic session events distributed across 6 runs with randomised inter-trial intervals.
+
+##### `export_eeg_json(output_path, data)`
+
+Writes the JSON to disk and reports the file size.
+
+#### `__init__.py` — Pipeline Orchestrator
+
+##### `run_eeg_pipeline(config, electrode_mappings)`
+
+Top-level function called by `main.py`. The flow is:
+
+1. Build the `channel_regions` dict from the electrode pipeline output.
+2. Look for a GDF file at `{eeg_data_dir}/{eeg_subject}{eeg_session}.gdf`.
+3. If found: load → preprocess → epoch → compute ERD/ERS for mu and beta bands → downsample → build JSON.
+4. If not found: generate synthetic demo data.
+5. Export to `frontend/public/data/eeg_data.json`.
+
+The `electrode_mappings` parameter comes from step 5 of the main pipeline (electrode mapping). It provides the channel → brain region association that the frontend needs to map per-channel ERD/ERS values onto the 3D brain mesh.
+
+### Configuration Fields
+
+| Field | Default | Description |
+|---|---|---|
+| `EEG_DATA_DIR` | `./data/eeg` | Directory containing GDF files |
+| `EEG_SUBJECT` | `A01` | Subject ID (A01–A09) |
+| `EEG_SESSION` | `T` | Session type (T = training, E = evaluation) |
+| `EEG_EPOCH_TMIN` | `−0.5` | Epoch start relative to cue (seconds) |
+| `EEG_EPOCH_TMAX` | `4.0` | Epoch end relative to cue (seconds) |
+| `EEG_BASELINE_TMIN` | `−0.5` | Baseline window start (seconds) |
+| `EEG_BASELINE_TMAX` | `0.0` | Baseline window end (seconds) |
+| `EEG_DOWNSAMPLE_BINS` | `90` | Number of time bins in exported JSON |
+| `EEG_OUTPUT_FILENAME` | `eeg_data.json` | Output filename |
+
+The mu (8–13 Hz) and beta (13–30 Hz) band ranges are defined as Python tuples in the Config dataclass and are not configurable via `.env`.
+
+### Design Decisions
+
+| Decision | Rationale |
+|---|---|
+| **Batch processing, not streaming** | All EEG data is processed when the backend pipeline runs. The frontend fetches the pre-computed JSON as a static file. This avoids the complexity of a running backend server while keeping frontend interactions instant after the initial load. |
+| **Hilbert transform for band power** | More computationally efficient than Morlet wavelets for the visualisation use case. Gives a smooth instantaneous power estimate suitable for the ~50 ms time resolution of the exported data. |
+| **EOG regression over ICA** | Linear regression is simpler, faster, and recommended by the dataset documentation. ICA would require manual component inspection which doesn't fit an automated pipeline. |
+| **Synthetic data fallback** | Lets the frontend be developed and tested without requiring the actual GDF files. The synthetic patterns are spatially and temporally realistic enough to verify the heatmap and timeline logic. |
+| **Downsampling to 90 bins** | Keeps the JSON under 130 KB (22 channels × 90 times × 4 classes × 2 bands ≈ 15,840 values). The full 1125-sample resolution is unnecessary for the visualisation. |
+| **Channel-to-region mapping from electrode pipeline** | Reuses the existing electrode → Destrieux region assignment rather than re-deriving it. Ensures consistency between the electrode metadata and the EEG heatmap. |
