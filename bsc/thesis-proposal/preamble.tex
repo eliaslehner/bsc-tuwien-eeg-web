@@ -1,0 +1,88 @@
+\documentclass[a4paper,12pt]{article}
+
+%-------------------------------
+% Geometry, Language, and Encoding
+%-------------------------------
+\usepackage[a4paper, left=2cm, right=2cm, top=2cm, bottom=2.5cm]{geometry}
+\usepackage[english,main=english]{babel}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+
+%-------------------------------
+% Layout and Spacing
+%-------------------------------
+\usepackage{setspace}
+\usepackage{parskip}
+
+%-------------------------------
+% Headers and Footers
+%-------------------------------
+\usepackage{fancyhdr}
+\usepackage{lastpage}
+\setlength{\headheight}{14.5pt}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\input{lecture}}
+\fancyhead[R]{\input{student}}
+\fancyfoot[C]{Page \thepage\ of \pageref{LastPage}}
+\setlength{\headheight}{14.5pt}
+
+%-------------------------------
+% Colors and Hyperlinks
+%-------------------------------
+\usepackage[x11names=dvipsnames]{xcolor}
+\definecolor{accentcolor}{named}{magenta}
+\definecolor{tableofcontentscolor}{named}{black}
+
+\usepackage{hyperref}
+\hypersetup{
+    breaklinks    = true,
+    colorlinks    = true,
+    linkcolor     = tableofcontentscolor,
+    citecolor     = accentcolor
+}
+
+%-------------------------------
+% Quotation Marks for German Text
+%-------------------------------
+\usepackage{csquotes}
+
+%-------------------------------
+% Bibliography with Footnote Style
+%-------------------------------
+%\usepackage[style=footnote-dw, ibidtracker=false, backend=biber, sorting=none]{biblatex}
+\usepackage[ibidtracker=false, backend=biber, sorting=none,maxnames=99,maxalphanames=11]{biblatex}
+\addbibresource{references.bib}
+
+%-------------------------------
+% tcolorbox and Related Packages
+%-------------------------------
+\usepackage{tcolorbox}
+\tcbuselibrary{listings,skins,breakable}
+\usepackage{xparse}
+\usepackage{fontawesome5}
+
+%-------------------------------
+% Lists
+%-------------------------------
+\usepackage{paralist}
+
+%-------------------------------
+% Response Box
+%-------------------------------
+\newtcolorbox{responsebox}{
+  enhanced,
+  breakable,
+  colback=gray!10,
+  colframe=white,
+  boxrule=0pt,
+  top=6pt,
+  bottom=6pt,
+  left=6pt,
+  right=6pt,
+  before skip=10pt,
+  after skip=10pt,
+  sharp corners,
+  fonttitle=\bfseries,
+  coltitle=black
+}

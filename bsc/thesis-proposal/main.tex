@@ -1,0 +1,101 @@
+\input{preamble} % Include the preamble settings
+
+\begin{document}
+
+% START titlepage
+\begin{titlepage}
+\vspace*{\fill}
+\begingroup
+\centering
+{\Huge\textbf{Bachelor Thesis Proposal}}\\[0.5cm]
+{\large \input{student}}\\[0.5cm]
+{\large Development of a Web-based Visual Analytics Framework for EEG Motor Imagery Signals}
+
+\endgroup
+\vspace*{\fill}
+\end{titlepage}
+% END titlepage
+\pagenumbering{arabic} % Use Roman numerals for front matter
+\setcounter{page}{1} % Start page numbering for front matter
+
+
+% Abstract
+\section*{Abstract}
+Interpreting raw Electroencephalography (EEG) signals for Motor Imagery (MI) Brain-Computer Interfaces (BCI) presents a significant challenge due to the high dimensionality and abstract nature of the data. Existing analysis tools are often resource-intensive, desktop-bound, and lack intuitive, real-time visual feedback. This bachelor thesis proposes the development of a lightweight, web-based Visual Analytics Framework designed to enhance the interpretability of EEG MI signals.
+
+The proposed system leverages the BCI Competition IV-2a dataset to visualize spatial activation patterns on a 3D cortex model. The architecture combines a Python-based backend utilizing MNE-Python for signal processing, specifically filtering for Mu and Beta rhythms, and with a React.js and Three.js frontend for hardware-accelerated 3D rendering. The resulting open-source prototype aims to bridge the gap between signal processing and human understanding, providing an interactive platform for analyzing neural dynamics and debugging BCI machine learning models without the need for extensive local software installations.
+
+\clearpage
+
+% Table of Contents
+\tableofcontents
+\clearpage
+
+% 1. Introduction and Motivation
+\section{Introduction and Motivation}
+Brain-Computer Interfaces (BCI) based on Motor Imagery (MI) generate high-dimensional, complex time-series data. For researchers and developers, interpreting these raw Electroencephalography (EEG) signals remains a significant challenge, often referred to as the \glqq Black Box\grqq \space problem. While machine learning algorithms, such as Convolutional Neural Networks (CNNs) \cite{srimadumathi2024} or Riemannian geometry-based methods \cite{barachant2012}, can classify these signals with increasing accuracy, the underlying neural dynamics often remain non-transparent to the human observer.
+
+Traditional analysis tools (e.g., MATLAB-based toolboxes) are typically desktop-based and require significant local processing power. Furthermore, they often lack intuitive, interactive visual feedback that effectively maps the spatial distribution of brain activity in real-time. As BCI technology moves towards consumer applications and \glqq Human-in-the-Loop\grqq \space systems, there is a critical need for lightweight, accessible, and interactive visualization tools. Scripting-based analysis, particularly using Python, has become a standard to foster reproducibility and collaboration \cite{gramfort2013}. Such tools must bridge the gap between abstract signal processing and human understanding by rendering complex biosignals in a comprehensible 3D environment.
+
+\clearpage
+
+% 2. Research Objective
+\section{Research Objective}
+The primary objective of this thesis is to design and implement a web-based Visual Analytics Dashboard specifically for EEG Motor Imagery data. Unlike purely statistical analysis tools, this project focuses on the User Interface (UI) and User Experience (UX) of BCI data interpretation.
+
+Key research goals include:
+\begin{itemize}
+    \item \textbf{3D Spatial Mapping:} Accurately mapping active EEG electrodes onto a 3D model of the human cortex to visualize spatial activation patterns. This aims to distinguish left vs. right motor cortex activity, which typically manifests as Event-Related Desynchronization (ERD) and Synchronization (ERS) in the Mu and Beta rhythms \cite{abiri2019}.
+    \item \textbf{Web-based Performance:} Demonstrating that high-frequency biosignals can be rendered performantly in a standard web browser without heavy local software installation, utilizing modern WebGL technologies.
+    \item \textbf{Interactive Replay:} Implementing a \glqq Time-Travel\grqq \space feature that allows users to scrub through recorded sessions, filter signals visually, and inspect specific time windows of interest.
+\end{itemize}
+
+\clearpage
+
+% 3. Methodology
+\section{Methodology}
+The project follows a \glqq Prototyping and Implementation\grqq \space approach, leveraging modern web technologies and open-source scientific libraries.
+
+\subsection{Dataset}
+The system will be developed and evaluated using the \textbf{BCI Competition IV-2a dataset} \cite{brunner2008}. This standard benchmark dataset consists of EEG data from 9 subjects performing four different motor imagery tasks (Left Hand, Right Hand, Feet, Tongue). It was recorded using 22 Ag\slash AgCl electrodes at a sampling rate of 250 Hz \cite{brunner2008}. Using this standardized dataset ensures that the visualization framework is compatible with established research standards.
+
+\subsection{System Architecture}
+\begin{itemize}
+    \item \textbf{Backend (Data Processing):} A Python-based backend server will be developed to handle data ingestion. The MNE-Python library \cite{gramfort2013} will be used to parse the raw .gdf files and perform necessary preprocessing. This includes applying a bandpass filter (8–30 Hz) to isolate the Mu and Beta rhythms relevant for motor imagery \cite{srimadumathi2024}. The processed data will be streamed to the frontend via a REST API or WebSockets for real-time simulation.
+    \item \textbf{Frontend (Visualization):} The user interface will be built using React.js for a modular component architecture. The core visualization engine will utilize Three.js (WebGL) to render the 3D brain model and electrode positions dynamically in the browser. This ensures cross-platform compatibility and hardware-accelerated rendering.
+\end{itemize}
+
+\clearpage
+
+% 4. Implementation Steps
+\section{Implementation Steps}
+\begin{enumerate}
+    \item \textbf{Data Preparation:} Standardization of the BCI Competition IV-2a dataset using MNE-Python \cite{gramfort2013}; extraction of channel locations (10-20 system) and trial timings.
+    \item \textbf{Backend Architecture:} Setup of a lightweight Python (Flask/FastAPI) server to serve time-series data chunks and electrode coordinates.
+    \item \textbf{Frontend Development:}
+    \begin{itemize}
+        \item Implementation of synchronized 2D signal plots (Time-Voltage charts) using canvas-based rendering.
+        \item Implementation of the interactive 3D scalp map.
+        \item Development of the synchronization logic to ensure the 3D heatmap updates in exact sync with the time-series playback.
+    \end{itemize}
+    \item \textbf{Evaluation:} The prototype will be evaluated based on rendering performance (Frames Per Second under load) and a qualitative assessment of the visualization's clarity in distinguishing Motor Imagery classes.
+\end{enumerate}
+
+\clearpage
+
+% 5. Expected Outcome
+\section{Expected Outcome}
+The result of this thesis will be a fully functional, open-source web prototype. It will demonstrate how modern Frontend Engineering can be applied to Neurotechnology to enhance data interpretability. This framework will serve as the foundational infrastructure for future \glqq Human-in-the-Loop\grqq \space research \cite{edelman2024}, enabling easier debugging of BCI machine learning models and providing a platform for visual feedback in user training.
+
+\clearpage
+
+% Bibliography section
+\defbibheading{customreferences}[\refname]{% Define custom heading for bibliography
+ \section*{References} % Use unnumbered section title "Referenzen"
+ \addcontentsline{toc}{section}{References} % Add bibliography to ToC
+ \vspace{0.5em} % Add some vertical space
+}
+
+\printbibliography[heading=customreferences] % Print the bibliography using the custom heading
+
+\end{document}

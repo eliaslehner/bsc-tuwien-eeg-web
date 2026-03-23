@@ -75,6 +75,7 @@ export default function Home() {
             <Timeline
                 eegData={eegData}
                 selectedClasses={selectedClasses}
+                selectedBand={selectedBand}
                 currentTimeIndex={currentTimeIndex}
                 onTimeChange={setCurrentTimeIndex}
                 playing={playing}
