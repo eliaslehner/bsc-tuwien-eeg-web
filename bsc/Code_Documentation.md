@@ -541,7 +541,9 @@ Removes EOG contamination from the EEG using `mne.preprocessing.EOGRegression`, 
 
 ##### `preprocess_raw(raw, eeg_channels, eog_channels)`
 
-Runs the full preprocessing sequence: EOG artifact removal → pick EEG channels only → bandpass filter (0.5–40 Hz). The order matters — EOG regression needs both EEG and EOG channels present, so channel picking happens after.
+Runs the full preprocessing sequence: EOG artifact removal → pick EEG channels only → **CAR re-referencing** → bandpass filter (0.5–40 Hz). The order matters — EOG regression needs both EEG and EOG channels present so channel picking happens after, and CAR must happen after picking so the average is computed over the 22 EEG channels only (not the EOG channels).
+
+The CAR step (`raw.set_eeg_reference('average', projection=False)`) removes the hardware left-mastoid reference bias that is baked into the raw recordings. Without it, right-hemisphere amplitudes are systematically inflated relative to left-hemisphere amplitudes, which would cause the ERD/ERS heatmap to be asymmetric purely due to the reference geometry rather than any real lateralised brain activity.
 
 ##### `create_epochs(raw, events, event_id, tmin, tmax)`
 
@@ -636,6 +638,7 @@ The mu (8–13 Hz) and beta (13–30 Hz) band ranges are defined as Python tuple
 | **Batch processing, not streaming** | All EEG data is processed when the backend pipeline runs. The frontend fetches the pre-computed JSON as a static file. This avoids the complexity of a running backend server while keeping frontend interactions instant after the initial load. |
 | **Hilbert transform for band power** | More computationally efficient than Morlet wavelets for the visualisation use case. Gives a smooth instantaneous power estimate suitable for the ~50 ms time resolution of the exported data. |
 | **EOG regression over ICA** | Linear regression is simpler, faster, and recommended by the dataset documentation. ICA would require manual component inspection which doesn't fit an automated pipeline. |
+| **CAR re-referencing before bandpass** | The dataset was recorded with a left-mastoid hardware reference, which artificially inflates right-hemisphere amplitudes. Re-referencing to the common average removes this bias before any power computation. CAR is applied after channel picking so the average is computed over only the 22 EEG channels. |
 | **Synthetic data fallback** | Lets the frontend be developed and tested without requiring the actual GDF files. The synthetic patterns are spatially and temporally realistic enough to verify the heatmap and timeline logic. |
 | **Downsampling to 90 bins** | Keeps the JSON under 130 KB (22 channels × 90 times × 4 classes × 2 bands ≈ 15,840 values). The full 1125-sample resolution is unnecessary for the visualisation. |
 | **Channel-to-region mapping from electrode pipeline** | Reuses the existing electrode → Destrieux region assignment rather than re-deriving it. Ensures consistency between the electrode metadata and the EEG heatmap. |

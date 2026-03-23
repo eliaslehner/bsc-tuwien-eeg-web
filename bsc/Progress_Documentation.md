@@ -151,3 +151,13 @@ The tooltip now also shows the ERD/ERS percentage when you hover in heatmap mode
 The old `ElectrodeSidebar.jsx` is still in the codebase but no longer imported. The hover-to-identify-region functionality still works through the tooltip on the brain itself, which was always independent of the sidebar.
 
 **`globals.css`** was rewritten for the new layout. The main structural change is that `.content` is now a flex row with the dataset panel (fixed 260px) and the viewer (flex: 1), and the timeline sits below as a fixed-height bar. The class filter buttons, band selector, heatmap toggle, and info popup all have new styles following the same dark theme (background `#1a1a1a`, borders `#2a2a2a`, accent `#6ee7b7`). The epoch slider is custom-styled with a green thumb and dark track. Everything uses the same 0.15s transitions as before.
+
+## EEG re-referencing fix — CAR before ERD/ERS — 23.03.2026
+
+The dataset documentation (`Dataset_Desc_2a.md`) states that the EEG was recorded monopolarly with the left mastoid as the hardware reference. This means every electrode's voltage is actually the potential difference between that site and the left ear. The practical effect is an asymmetry: electrodes on the right hemisphere (physically far from the reference) have artificially inflated amplitudes, while left-hemisphere electrodes are attenuated. If you compute ERD/ERS on mastoid-referenced data your brain heatmap will look like the right hemisphere is systematically more active than the left, not because of any motor imagery effect but purely because of the reference geometry.
+
+The fix is to re-reference to a **Common Average Reference (CAR)** before the Hilbert transform. CAR replaces each electrode's voltage with the difference between that electrode and the instantaneous mean across all 22 EEG channels. This removes the left-mastoid bias because the mean reference is spatially symmetric across the scalp — no single hemisphere is systematically boosted or suppressed.
+
+In `processing.py` I added `raw.set_eeg_reference('average', projection=False, verbose=False)` to `preprocess_raw`, inserted after picking the 22 EEG channels (so the mean is computed only over EEG, not EOG) and before the bandpass filter (so the filter operates on the already-corrected signal). The `projection=False` flag applies the reference directly to the data rather than storing it as an MNE projector, which keeps the rest of the pipeline simpler.
+
+An even stronger fix would be a Surface Laplacian (Current Source Density) transform, which not only removes the reference but also spatially sharpens the signal by suppressing volume conduction. That could be added later if the heatmap spatial resolution needs to improve, but CAR is the correct minimum step.
