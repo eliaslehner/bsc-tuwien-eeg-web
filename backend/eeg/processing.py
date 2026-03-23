@@ -34,10 +34,15 @@ def remove_eog_artifacts(raw, eeg_channels, eog_channels):
 
 def preprocess_raw(raw, eeg_channels, eog_channels, l_freq=0.5, h_freq=40.0):
     """
-    Full preprocessing: EOG removal -> pick EEG channels -> bandpass filter.
+    Full preprocessing: EOG removal -> pick EEG channels -> CAR -> bandpass filter.
+
+    The dataset was recorded with a left-mastoid reference, which artificially
+    inflates right-hemisphere amplitudes and shrinks left-hemisphere ones.
+    Common Average Reference (CAR) removes this bias before ERD/ERS computation.
     """
     raw = remove_eog_artifacts(raw, eeg_channels, eog_channels)
     raw.pick(eeg_channels)
+    raw.set_eeg_reference('average', projection=False, verbose=False)
     raw.filter(l_freq, h_freq, verbose=False)
     return raw
 
