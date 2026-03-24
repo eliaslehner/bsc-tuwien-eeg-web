@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useCallback, useMemo } from 'react';
+import { useEffect, useRef, useCallback, useMemo, useState } from 'react';
 
 const MOTOR_CHANNELS = ['C3', 'Cz', 'C4'];
 
@@ -17,10 +17,11 @@ function niceStep(range, maxTicks) {
 
 export default function TimelineCurves({
     eegData, selectedClasses, selectedBand, currentTimeIndex, onTimeChange,
-    channelMode, stacked,
+    channelMode, stacked, visibleRange, contrastMode, contrastOrder,
 }) {
     const canvasRef = useRef(null);
     const containerRef = useRef(null);
+    const [mousePos, setMousePos] = useState(null);
 
     const bandData = eegData?.erd_ers?.[selectedBand];
     const times = bandData?.times || [];
@@ -32,7 +33,7 @@ export default function TimelineCurves({
     );
 
     const channelIndices = useMemo(() => {
-        if (channelMode === 'all') return channels.map((_, i) => i);
+        if (channelMode === 'all' || channelMode === 'all_individual') return channels.map((_, i) => i);
         if (channelMode === 'motor') {
             const m = channels.reduce((a, ch, i) => {
                 if (MOTOR_CHANNELS.includes(ch)) a.push(i);
@@ -50,31 +51,64 @@ export default function TimelineCurves({
         for (const cls of activeClasses) {
             const cd = bandData[cls.id];
             if (!cd) continue;
-            const avg = new Array(times.length).fill(0);
-            let n = 0;
-            for (const ci of channelIndices) {
-                if (cd[ci]) {
-                    for (let t = 0; t < times.length; t++) avg[t] += cd[ci][t];
-                    n++;
+            
+            if (channelMode === 'all_individual') {
+                result[cls.id] = { individual: true, lines: [] };
+                for (const ci of channelIndices) {
+                    if (cd[ci]) {
+                        result[cls.id].lines.push({ chName: channels[ci], data: cd[ci] });
+                    }
                 }
+            } else {
+                const avg = new Array(times.length).fill(0);
+                let n = 0;
+                for (const ci of channelIndices) {
+                    if (cd[ci]) {
+                        for (let t = 0; t < times.length; t++) avg[t] += cd[ci][t];
+                        n++;
+                    }
+                }
+                if (n > 0) for (let t = 0; t < times.length; t++) avg[t] /= n;
+                result[cls.id] = avg;
             }
-            if (n > 0) for (let t = 0; t < times.length; t++) avg[t] /= n;
-            result[cls.id] = avg;
         }
         return result;
-    }, [bandData, times, activeClasses, channelIndices]);
+    }, [bandData, times, activeClasses, channelIndices, channelMode, channels]);
+
+    const diffCurve = useMemo(() => {
+        if (!contrastMode || !contrastOrder?.[0] || !contrastOrder?.[1]) return null;
+        const c1 = curves[contrastOrder[0]];
+        const c2 = curves[contrastOrder[1]];
+        if (!c1 || !c2 || c1.individual || c2.individual) return null;
+        return c1.map((v, i) => v - c2[i]);
+    }, [contrastMode, contrastOrder, curves]);
 
     const yRange = useMemo(() => {
         let min = 0, max = 0;
         for (const c of Object.values(curves)) {
-            for (const v of c) {
+            if (c.individual) {
+                for (const line of c.lines) {
+                    for (const v of line.data) {
+                        if (v < min) min = v;
+                        if (v > max) max = v;
+                    }
+                }
+            } else {
+                for (const v of c) {
+                    if (v < min) min = v;
+                    if (v > max) max = v;
+                }
+            }
+        }
+        if (diffCurve) {
+            for (const v of diffCurve) {
                 if (v < min) min = v;
                 if (v > max) max = v;
             }
         }
         const p = Math.max((max - min) * 0.15, 5);
         return { min: min - p, max: max + p };
-    }, [curves]);
+    }, [curves, diffCurve]);
 
     const draw = useCallback(() => {
         const canvas = canvasRef.current;
@@ -91,7 +125,9 @@ export default function TimelineCurves({
         ctx.fillStyle = '#0d0d0d';
         ctx.fillRect(0, 0, w, h);
 
-        const tmin = times[0], tmax = times[times.length - 1];
+        const vStart = visibleRange?.start ?? 0;
+        const vEnd = visibleRange?.end ?? (times.length - 1);
+        const tmin = times[vStart], tmax = times[vEnd];
         const tRange = tmax - tmin || 1;
         const pad = stacked
             ? { top: 4, right: 16, bottom: 22, left: 80 }
@@ -101,11 +137,12 @@ export default function TimelineCurves({
         const xFor = (t) => pad.left + ((t - tmin) / tRange) * plotW;
 
         if (stacked) {
-            const n = activeClasses.length;
+            const hasDiff = !!diffCurve;
+            const n = activeClasses.length + (hasDiff ? 1 : 0);
             const gap = 3;
             const laneH = (plotH - gap * Math.max(0, n - 1)) / n;
 
-            for (let li = 0; li < n; li++) {
+            for (let li = 0; li < activeClasses.length; li++) {
                 const cls = activeClasses[li];
                 const curve = curves[cls.id];
                 if (!curve) continue;
@@ -149,23 +186,173 @@ export default function TimelineCurves({
                 ctx.globalAlpha = 0.08;
                 ctx.fillStyle = cls.color;
                 ctx.beginPath();
-                for (let i = 0; i < times.length; i++) {
+                for (let i = vStart; i <= vEnd; i++) {
                     const x = xFor(times[i]), y = yFor(curve[i]);
-                    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+                    i === vStart ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
                 }
-                ctx.lineTo(xFor(times[times.length - 1]), yFor(0));
-                ctx.lineTo(xFor(times[0]), yFor(0));
+                ctx.lineTo(xFor(times[vEnd]), yFor(0));
+                ctx.lineTo(xFor(times[vStart]), yFor(0));
                 ctx.closePath();
                 ctx.fill();
                 ctx.globalAlpha = 1;
 
-                // Curve line
-                ctx.strokeStyle = cls.color;
+                // Curve line(s)
+                if (curve.individual) {
+                    // Find hovered electrode (nearest to mouse Y at playhead X)
+                    let hoveredIdx = -1;
+                    if (mousePos && currentTimeIndex >= 0 && currentTimeIndex < times.length) {
+                        let bestDist = Infinity;
+                        for (let cIdx = 0; cIdx < curve.lines.length; cIdx++) {
+                            const yVal = yFor(curve.lines[cIdx].data[currentTimeIndex]);
+                            const dist = Math.abs(mousePos.y - yVal);
+                            if (dist < bestDist) {
+                                bestDist = dist;
+                                hoveredIdx = cIdx;
+                            }
+                        }
+                        if (bestDist > 30) hoveredIdx = -1;
+                    }
+
+                    for (let cIdx = 0; cIdx < curve.lines.length; cIdx++) {
+                        const lineData = curve.lines[cIdx].data;
+                        const isHovered = cIdx === hoveredIdx;
+                        ctx.strokeStyle = cls.color;
+                        ctx.globalAlpha = isHovered ? 1 : 0.3;
+                        ctx.lineWidth = isHovered ? 2 : 1;
+                        ctx.beginPath();
+                        for (let i = vStart; i <= vEnd; i++) {
+                            const x = xFor(times[i]), y = yFor(lineData[i]);
+                            i === vStart ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+                        }
+                        ctx.stroke();
+                    }
+                    ctx.globalAlpha = 1;
+
+                    // Draw electrode tooltip for hovered line
+                    if (hoveredIdx >= 0 && mousePos) {
+                        const chName = curve.lines[hoveredIdx].chName;
+                        const val = curve.lines[hoveredIdx].data[currentTimeIndex];
+                        const label = `${chName}: ${val >= 0 ? '+' : ''}${val.toFixed(1)}%`;
+                        ctx.font = '11px system-ui';
+                        const tw = ctx.measureText(label).width;
+                        const tx = Math.min(mousePos.x + 12, w - tw - 8);
+                        const ty = Math.max(mousePos.y - 10, top + 14);
+                        ctx.fillStyle = 'rgba(0,0,0,0.8)';
+                        ctx.fillRect(tx - 4, ty - 11, tw + 8, 16);
+                        ctx.fillStyle = cls.color;
+                        ctx.fillText(label, tx, ty);
+                    }
+
+                    // Playhead
+                    if (currentTimeIndex >= 0 && currentTimeIndex < times.length) {
+                        const xp = xFor(times[currentTimeIndex]);
+                        ctx.strokeStyle = '#6ee7b7';
+                        ctx.lineWidth = 1.5;
+                        ctx.beginPath();
+                        ctx.moveTo(xp, top);
+                        ctx.lineTo(xp, top + laneH);
+                        ctx.stroke();
+                    }
+                } else {
+                    // Standard single curve
+                    ctx.strokeStyle = cls.color;
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    for (let i = vStart; i <= vEnd; i++) {
+                        const x = xFor(times[i]), y = yFor(curve[i]);
+                        i === vStart ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+                    }
+                    ctx.stroke();
+
+                    // Playhead
+                    if (currentTimeIndex >= 0 && currentTimeIndex < times.length) {
+                        const xp = xFor(times[currentTimeIndex]);
+                        ctx.strokeStyle = '#6ee7b7';
+                        ctx.lineWidth = 1.5;
+                        ctx.beginPath();
+                        ctx.moveTo(xp, top);
+                        ctx.lineTo(xp, top + laneH);
+                        ctx.stroke();
+                        ctx.fillStyle = cls.color;
+                        ctx.beginPath();
+                        ctx.arc(xp, yFor(curve[currentTimeIndex]), 3.5, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                }
+
+                // Class label + value
+                ctx.fillStyle = cls.color;
+                ctx.font = '11px system-ui';
+                ctx.textAlign = 'right';
+                ctx.fillText(cls.label, pad.left - 8, top + laneH / 2 - 2);
+                if (!curve.individual && currentTimeIndex >= 0 && currentTimeIndex < curve.length) {
+                    const v = curve[currentTimeIndex];
+                    ctx.fillStyle = '#777';
+                    ctx.font = '10px "Consolas", monospace';
+                    ctx.fillText(
+                        `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`,
+                        pad.left - 8,
+                        top + laneH / 2 + 12,
+                    );
+                } else if (curve.individual) {
+                    ctx.fillStyle = '#777';
+                    ctx.font = '9px "Consolas", monospace';
+                    ctx.fillText('All Chs', pad.left - 8, top + laneH / 2 + 12);
+                }
+            }
+
+            // Difference curve lane (stacked)
+            if (hasDiff) {
+                const diffColor = '#6ee7b7';
+                const li = activeClasses.length;
+                const top = pad.top + li * (laneH + gap);
+                const yFor = (v) =>
+                    top + laneH - ((v - yRange.min) / (yRange.max - yRange.min)) * laneH;
+
+                ctx.fillStyle = '#0a0f0d';
+                ctx.fillRect(pad.left, top, plotW, laneH);
+
+                if (yRange.min < 0 && yRange.max > 0) {
+                    ctx.strokeStyle = '#222';
+                    ctx.lineWidth = 1;
+                    ctx.setLineDash([3, 3]);
+                    ctx.beginPath();
+                    ctx.moveTo(pad.left, yFor(0));
+                    ctx.lineTo(pad.left + plotW, yFor(0));
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                }
+
+                ctx.strokeStyle = '#333';
+                ctx.lineWidth = 1;
+                ctx.setLineDash([2, 2]);
+                ctx.beginPath();
+                ctx.moveTo(xFor(0), top);
+                ctx.lineTo(xFor(0), top + laneH);
+                ctx.stroke();
+                ctx.setLineDash([]);
+
+                // Fill
+                ctx.globalAlpha = 0.1;
+                ctx.fillStyle = diffColor;
+                ctx.beginPath();
+                for (let i = vStart; i <= vEnd; i++) {
+                    const x = xFor(times[i]), y = yFor(diffCurve[i]);
+                    i === vStart ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+                }
+                ctx.lineTo(xFor(times[vEnd]), yFor(0));
+                ctx.lineTo(xFor(times[vStart]), yFor(0));
+                ctx.closePath();
+                ctx.fill();
+                ctx.globalAlpha = 1;
+
+                // Line
+                ctx.strokeStyle = diffColor;
                 ctx.lineWidth = 2;
                 ctx.beginPath();
-                for (let i = 0; i < times.length; i++) {
-                    const x = xFor(times[i]), y = yFor(curve[i]);
-                    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+                for (let i = vStart; i <= vEnd; i++) {
+                    const x = xFor(times[i]), y = yFor(diffCurve[i]);
+                    i === vStart ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
                 }
                 ctx.stroke();
 
@@ -178,26 +365,22 @@ export default function TimelineCurves({
                     ctx.moveTo(xp, top);
                     ctx.lineTo(xp, top + laneH);
                     ctx.stroke();
-                    ctx.fillStyle = cls.color;
+                    ctx.fillStyle = diffColor;
                     ctx.beginPath();
-                    ctx.arc(xp, yFor(curve[currentTimeIndex]), 3.5, 0, Math.PI * 2);
+                    ctx.arc(xp, yFor(diffCurve[currentTimeIndex]), 3.5, 0, Math.PI * 2);
                     ctx.fill();
                 }
 
-                // Class label + value
-                ctx.fillStyle = cls.color;
+                // Label
+                ctx.fillStyle = diffColor;
                 ctx.font = '11px system-ui';
                 ctx.textAlign = 'right';
-                ctx.fillText(cls.label, pad.left - 8, top + laneH / 2 - 2);
-                if (currentTimeIndex >= 0 && currentTimeIndex < curve.length) {
-                    const v = curve[currentTimeIndex];
+                ctx.fillText('Diff', pad.left - 8, top + laneH / 2 - 2);
+                if (currentTimeIndex >= 0 && currentTimeIndex < diffCurve.length) {
+                    const v = diffCurve[currentTimeIndex];
                     ctx.fillStyle = '#777';
                     ctx.font = '10px "Consolas", monospace';
-                    ctx.fillText(
-                        `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`,
-                        pad.left - 8,
-                        top + laneH / 2 + 12,
-                    );
+                    ctx.fillText(`${v >= 0 ? '+' : ''}${v.toFixed(1)}%`, pad.left - 8, top + laneH / 2 + 12);
                 }
             }
         } else {
@@ -255,14 +438,72 @@ export default function TimelineCurves({
             for (const cls of activeClasses) {
                 const curve = curves[cls.id];
                 if (!curve) continue;
-                ctx.strokeStyle = cls.color;
+                if (curve.individual) {
+                    let hoveredIdx = -1;
+                    if (mousePos && currentTimeIndex >= 0 && currentTimeIndex < times.length) {
+                        let bestDist = Infinity;
+                        for (let cIdx = 0; cIdx < curve.lines.length; cIdx++) {
+                            const yVal = yFor(curve.lines[cIdx].data[currentTimeIndex]);
+                            const dist = Math.abs(mousePos.y - yVal);
+                            if (dist < bestDist) {
+                                bestDist = dist;
+                                hoveredIdx = cIdx;
+                            }
+                        }
+                        if (bestDist > 30) hoveredIdx = -1;
+                    }
+                    for (let cIdx = 0; cIdx < curve.lines.length; cIdx++) {
+                        const lineData = curve.lines[cIdx].data;
+                        const isHovered = cIdx === hoveredIdx;
+                        ctx.strokeStyle = cls.color;
+                        ctx.globalAlpha = isHovered ? 1 : 0.3;
+                        ctx.lineWidth = isHovered ? 2 : 1;
+                        ctx.beginPath();
+                        for (let i = vStart; i <= vEnd; i++) {
+                            const x = xFor(times[i]), y = yFor(lineData[i]);
+                            i === vStart ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+                        }
+                        ctx.stroke();
+                    }
+                    ctx.globalAlpha = 1;
+                    if (hoveredIdx >= 0 && mousePos) {
+                        const chName = curve.lines[hoveredIdx].chName;
+                        const val = curve.lines[hoveredIdx].data[currentTimeIndex];
+                        const label = `${chName}: ${val >= 0 ? '+' : ''}${val.toFixed(1)}%`;
+                        ctx.font = '11px system-ui';
+                        const tw = ctx.measureText(label).width;
+                        const tx = Math.min(mousePos.x + 12, w - tw - 8);
+                        const ty = Math.max(mousePos.y - 10, pad.top + 14);
+                        ctx.fillStyle = 'rgba(0,0,0,0.8)';
+                        ctx.fillRect(tx - 4, ty - 11, tw + 8, 16);
+                        ctx.fillStyle = cls.color;
+                        ctx.fillText(label, tx, ty);
+                    }
+                } else {
+                    ctx.strokeStyle = cls.color;
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    for (let i = vStart; i <= vEnd; i++) {
+                        const x = xFor(times[i]), y = yFor(curve[i]);
+                        i === vStart ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+                    }
+                    ctx.stroke();
+                }
+            }
+
+            // Difference curve (overlay)
+            if (diffCurve) {
+                const diffColor = '#6ee7b7';
+                ctx.strokeStyle = diffColor;
                 ctx.lineWidth = 2;
+                ctx.setLineDash([6, 3]);
                 ctx.beginPath();
-                for (let i = 0; i < times.length; i++) {
-                    const x = xFor(times[i]), y = yFor(curve[i]);
-                    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+                for (let i = vStart; i <= vEnd; i++) {
+                    const x = xFor(times[i]), y = yFor(diffCurve[i]);
+                    i === vStart ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
                 }
                 ctx.stroke();
+                ctx.setLineDash([]);
             }
 
             // Playhead + dots
@@ -276,10 +517,16 @@ export default function TimelineCurves({
                 ctx.stroke();
                 for (const cls of activeClasses) {
                     const curve = curves[cls.id];
-                    if (!curve) continue;
+                    if (!curve || curve.individual) continue;
                     ctx.fillStyle = cls.color;
                     ctx.beginPath();
                     ctx.arc(xp, yFor(curve[currentTimeIndex]), 4, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                if (diffCurve) {
+                    ctx.fillStyle = '#6ee7b7';
+                    ctx.beginPath();
+                    ctx.arc(xp, yFor(diffCurve[currentTimeIndex]), 4, 0, Math.PI * 2);
                     ctx.fill();
                 }
             }
@@ -290,15 +537,34 @@ export default function TimelineCurves({
             let ly = pad.top + 14;
             for (const cls of activeClasses) {
                 const curve = curves[cls.id];
-                const val = curve?.[currentTimeIndex];
+                const val = curve && !curve.individual ? curve[currentTimeIndex] : undefined;
                 let text = cls.label;
-                if (val !== undefined)
+                if (curve && curve.individual) {
+                    text += ` (Individual)`;
+                } else if (val !== undefined) {
                     text += ` ${val >= 0 ? '+' : ''}${val.toFixed(1)}%`;
+                }
                 const tw = ctx.measureText(text).width;
                 const lx = w - pad.right - 8;
                 ctx.fillStyle = 'rgba(0,0,0,0.6)';
                 ctx.fillRect(lx - tw - 18, ly - 10, tw + 22, 16);
                 ctx.fillStyle = cls.color;
+                ctx.beginPath();
+                ctx.arc(lx - tw - 8, ly - 2, 3.5, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#ccc';
+                ctx.fillText(text, lx, ly + 1);
+                ly += 20;
+            }
+            if (diffCurve) {
+                const diffColor = '#6ee7b7';
+                const val = diffCurve[currentTimeIndex];
+                let text = `Diff ${val !== undefined ? (val >= 0 ? '+' : '') + val.toFixed(1) + '%' : ''}`;
+                const tw = ctx.measureText(text).width;
+                const lx = w - pad.right - 8;
+                ctx.fillStyle = 'rgba(0,0,0,0.6)';
+                ctx.fillRect(lx - tw - 18, ly - 10, tw + 22, 16);
+                ctx.fillStyle = diffColor;
                 ctx.beginPath();
                 ctx.arc(lx - tw - 8, ly - 2, 3.5, 0, Math.PI * 2);
                 ctx.fill();
@@ -323,7 +589,7 @@ export default function TimelineCurves({
         }
         ctx.fillStyle = '#555';
         ctx.fillText('cue', xFor(0), h - 4);
-    }, [times, curves, activeClasses, yRange, currentTimeIndex, stacked]);
+    }, [times, curves, activeClasses, yRange, currentTimeIndex, stacked, mousePos, visibleRange, diffCurve]);
 
     useEffect(() => {
         const el = containerRef.current;
@@ -345,11 +611,13 @@ export default function TimelineCurves({
             const x = e.clientX - rect.left;
             const padL = stacked ? 80 : 50;
             const plotW = rect.width - padL - 16;
-            const tmin = times[0], tmax = times[times.length - 1];
+            const vS = visibleRange?.start ?? 0;
+            const vE = visibleRange?.end ?? (times.length - 1);
+            const tmin = times[vS], tmax = times[vE];
             const t = tmin + ((x - padL) / plotW) * (tmax - tmin);
-            let best = 0,
+            let best = vS,
                 bestD = Infinity;
-            for (let i = 0; i < times.length; i++) {
+            for (let i = vS; i <= vE; i++) {
                 const d = Math.abs(times[i] - t);
                 if (d < bestD) {
                     bestD = d;
@@ -358,8 +626,30 @@ export default function TimelineCurves({
             }
             onTimeChange(best);
         },
-        [times, onTimeChange, stacked],
+        [times, onTimeChange, stacked, visibleRange],
     );
+
+    const handleMouseMove = useCallback((e) => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const rect = canvas.getBoundingClientRect();
+        setMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+    }, []);
+
+    const handleMouseLeave = useCallback(() => setMousePos(null), []);
+
+    if (activeClasses.length === 0) {
+        return (
+            <div className="tl-canvas-wrap">
+                <div className="tl-empty-state">
+                    <span className="tl-empty-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M3 12h4l3-9 4 18 3-9h4"/></svg>
+                    </span>
+                    <p>Select at least one motor imagery class to view curves</p>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div ref={containerRef} className="tl-canvas-wrap">
@@ -367,6 +657,8 @@ export default function TimelineCurves({
                 ref={canvasRef}
                 className="tl-canvas"
                 onClick={handleClick}
+                onMouseMove={channelMode === 'all_individual' ? handleMouseMove : undefined}
+                onMouseLeave={channelMode === 'all_individual' ? handleMouseLeave : undefined}
             />
         </div>
     );

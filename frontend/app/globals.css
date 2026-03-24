@@ -99,6 +99,73 @@ body {
     color: #888;
 }
 
+/* Brain color legend */
+.brain-legend {
+    position: absolute;
+    bottom: 12px;
+    right: 12px;
+    background: rgba(0, 0, 0, 0.75);
+    border: 1px solid #333;
+    border-radius: 8px;
+    padding: 8px 10px;
+    pointer-events: none;
+    backdrop-filter: blur(6px);
+    z-index: 5;
+}
+
+.brain-legend-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 6px;
+}
+
+.brain-legend-gradient {
+    width: 12px;
+    height: 60px;
+    border-radius: 3px;
+    background: linear-gradient(to bottom, #e63320, #262626, #1a66e6);
+    flex-shrink: 0;
+}
+
+.brain-legend-labels {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    height: 60px;
+    font-size: 0.65rem;
+    color: #aaa;
+}
+
+.brain-legend-desc {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.brain-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.62rem;
+    color: #888;
+}
+
+.brain-legend-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+
+.brain-legend-dot-red {
+    background: #e63320;
+}
+
+.brain-legend-dot-blue {
+    background: #1a66e6;
+}
+
 /* Tooltip */
 .region-tooltip {
     position: fixed;
@@ -362,6 +429,33 @@ body {
     font-size: 0.85rem;
 }
 
+.tl-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    gap: 0.5rem;
+    color: #444;
+}
+
+.tl-empty-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: #1a1a1a;
+    border: 1px solid #222;
+    color: #444;
+}
+
+.tl-empty-state p {
+    font-size: 0.78rem;
+    color: #555;
+}
+
 /* Toolbar */
 .tl-toolbar {
     display: flex;
@@ -451,6 +545,12 @@ body {
     padding: 0 0.5rem;
 }
 
+.tl-layout-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
 /* View mode tabs */
 .tl-tabs {
     display: flex;
@@ -504,6 +604,28 @@ body {
 
 .tl-select:focus {
     border-color: #444;
+}
+
+/* Zoom controls */
+.tl-zoom-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    margin-left: 0.5rem;
+}
+
+.tl-zoom-label {
+    font-size: 0.7rem;
+    font-family: 'Consolas', monospace;
+    color: #888;
+    min-width: 24px;
+    text-align: center;
+}
+
+.tl-zoom-controls .tl-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+    pointer-events: none;
 }
 
 /* Time display */
@@ -678,3 +800,305 @@ body {
     border: none;
     cursor: grab;
 }
+
+/* === Help Button === */
+.help-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 1px solid #333;
+    background: transparent;
+    color: #666;
+    cursor: pointer;
+    margin-left: auto;
+    transition: all 0.15s;
+}
+
+.help-btn:hover {
+    border-color: #6ee7b7;
+    color: #6ee7b7;
+    background: rgba(110, 231, 183, 0.06);
+}
+
+/* === Help Modal === */
+.help-modal {
+    margin: auto;
+    padding: 0;
+    border: 1px solid #2a2a2a;
+    border-radius: 12px;
+    max-width: 520px;
+    width: 90vw;
+    background: #141414;
+    color: #e0e0e0;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+    overflow: hidden;
+}
+
+.help-modal::backdrop {
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(4px);
+}
+
+.help-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid #222;
+}
+
+.help-modal-header h2 {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #fff;
+    margin: 0;
+}
+
+.help-close-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    border: 1px solid #2a2a2a;
+    background: transparent;
+    color: #666;
+    cursor: pointer;
+    transition: all 0.12s;
+}
+
+.help-close-btn:hover {
+    border-color: #444;
+    color: #ccc;
+    background: #1e1e1e;
+}
+
+.help-modal-body {
+    padding: 1rem 1.25rem 1.5rem;
+}
+
+.help-card {
+    background: #1a1a1a;
+    border: 1px solid #222;
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    margin-bottom: 0.75rem;
+}
+
+.help-card h3 {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #6ee7b7;
+    margin: 0 0 0.4rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.help-card p {
+    font-size: 0.82rem;
+    line-height: 1.55;
+    color: #aaa;
+    margin: 0;
+}
+
+.help-divider {
+    height: 1px;
+    background: #222;
+    margin: 1rem 0;
+}
+
+.help-modal-body h3 {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #999;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin: 0 0 0.5rem;
+}
+
+.help-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.help-list li {
+    font-size: 0.8rem;
+    line-height: 1.5;
+    color: #aaa;
+    padding: 0.35rem 0.5rem;
+    background: #1a1a1a;
+    border-radius: 4px;
+}
+
+.help-list li strong {
+    color: #ccc;
+}
+
+/* === Analysis Tools === */
+.analysis-check {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 0.8rem;
+    color: #ccc;
+}
+
+.analysis-check-disabled {
+    color: #555;
+    cursor: not-allowed;
+}
+
+.analysis-check input[type="checkbox"] {
+    accent-color: #6ee7b7;
+}
+
+.analysis-hint {
+    display: block;
+    font-size: 0.68rem;
+    color: #555;
+    margin-top: 2px;
+    padding-left: 24px;
+}
+
+/* Contrast order */
+.contrast-order {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+    padding: 5px 8px;
+    background: #1a1a1a;
+    border: 1px solid #2a2a2a;
+    border-radius: 6px;
+    font-size: 0.75rem;
+}
+
+.contrast-order-label {
+    color: #ccc;
+    font-weight: 500;
+}
+
+.contrast-order-minus {
+    color: #888;
+    font-size: 0.9rem;
+}
+
+.contrast-swap-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 4px;
+    border: 1px solid #333;
+    background: transparent;
+    color: #888;
+    cursor: pointer;
+    margin-left: auto;
+    transition: all 0.12s;
+}
+
+.contrast-swap-btn:hover {
+    border-color: #6ee7b7;
+    color: #6ee7b7;
+    background: rgba(110, 231, 183, 0.08);
+}
+
+/* === Run Selector === */
+.run-selector {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.run-btn {
+    padding: 0.35rem 0.65rem;
+    font-size: 0.75rem;
+    font-family: inherit;
+    font-weight: 500;
+    border-radius: 6px;
+    border: 1px solid #2a2a2a;
+    background: #1a1a1a;
+    color: #777;
+    cursor: pointer;
+    transition: all 0.15s;
+    min-width: 38px;
+    text-align: center;
+}
+
+.run-btn:hover {
+    border-color: #3a3a3a;
+    background: #1e1e1e;
+}
+
+.run-btn.run-active {
+    background: #1a2420;
+    border-color: #6ee7b750;
+    color: #6ee7b7;
+}
+
+/* === Analysis Fields === */
+.analysis-field {
+    margin-bottom: 0.6rem;
+}
+
+.analysis-field:last-child {
+    margin-bottom: 0;
+}
+
+.analysis-slider-label {
+    display: block;
+    font-size: 0.8rem;
+    color: #999;
+    margin-bottom: 0.3rem;
+}
+
+.analysis-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 16px;
+    background: transparent;
+    cursor: pointer;
+}
+
+.analysis-slider::-webkit-slider-runnable-track {
+    height: 4px;
+    background: #2a2a2a;
+    border-radius: 2px;
+}
+
+.analysis-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #6ee7b7;
+    border: none;
+    margin-top: -4px;
+}
+
+.analysis-slider::-moz-range-track {
+    height: 4px;
+    background: #2a2a2a;
+    border-radius: 2px;
+    border: none;
+}
+
+.analysis-slider::-moz-range-thumb {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #6ee7b7;
+    border: none;
+}
+

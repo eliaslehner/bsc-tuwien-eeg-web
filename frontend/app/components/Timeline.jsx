@@ -1,29 +1,11 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import TimelineCurves from './TimelineCurves';
 import TimelineHeatmap from './TimelineHeatmap';
 import InfoPopup from './InfoPopup';
 
-function detectRuns(events) {
-    if (!events || events.length < 2) return [events || []];
-    const sorted = [...events].sort((a, b) => a.time - b.time);
-    const gaps = [];
-    for (let i = 1; i < sorted.length; i++)
-        gaps.push(sorted[i].time - sorted[i - 1].time);
-    const median = [...gaps].sort((a, b) => a - b)[Math.floor(gaps.length / 2)];
-    const threshold = median * 2.5;
-    const runs = [];
-    let start = 0;
-    for (let i = 1; i < sorted.length; i++) {
-        if (sorted[i].time - sorted[i - 1].time > threshold) {
-            runs.push(sorted.slice(start, i));
-            start = i;
-        }
-    }
-    runs.push(sorted.slice(start));
-    return runs;
-}
+const ZOOM_LEVELS = [1, 2, 4, 8];
 
 const SPEED_OPTIONS = [
     { label: '0.5x', ms: 160 },
@@ -40,11 +22,14 @@ export default function Timeline({
     onTimeChange,
     playing,
     onPlayToggle,
+    contrastMode,
+    contrastOrder,
 }) {
     const [viewMode, setViewMode] = useState('curves');
     const [channelMode, setChannelMode] = useState('motor');
     const [stacked, setStacked] = useState(true);
     const [speedIdx, setSpeedIdx] = useState(1);
+    const [zoomLevel, setZoomLevel] = useState(0);
 
     const intervalRef = useRef(null);
     const indexRef = useRef(currentTimeIndex);
@@ -64,16 +49,15 @@ export default function Timeline({
         return () => clearInterval(intervalRef.current);
     }, [playing, nTimes, onTimeChange, speedIdx]);
 
+    useEffect(() => {
+        if (channelMode === 'all_individual' && selectedClasses.size !== 1) {
+            setChannelMode('motor');
+        }
+    }, [selectedClasses.size, channelMode]);
+
     const currentTime = times[currentTimeIndex] ?? 0;
     const tmin = times[0] ?? -0.5;
     const tmax = times[nTimes - 1] ?? 4.0;
-
-    const runs = useMemo(() => detectRuns(eegData?.events), [eegData?.events]);
-    const classColorMap = useMemo(() => {
-        const map = {};
-        for (const cls of eegData?.dataset?.classes || []) map[cls.id] = cls.color;
-        return map;
-    }, [eegData?.dataset?.classes]);
 
     const handleStep = useCallback(
         (dir) => {
@@ -82,6 +66,38 @@ export default function Timeline({
         },
         [currentTimeIndex, nTimes, onTimeChange],
     );
+
+    const zoomFactor = ZOOM_LEVELS[zoomLevel];
+    const visibleRange = (() => {
+        if (zoomLevel === 0 || nTimes === 0) return { start: 0, end: nTimes - 1 };
+        const windowSize = Math.max(2, Math.floor(nTimes / zoomFactor));
+        const half = Math.floor(windowSize / 2);
+        let start = currentTimeIndex - half;
+        let end = start + windowSize - 1;
+        if (start < 0) { end -= start; start = 0; }
+        if (end >= nTimes) { start -= (end - nTimes + 1); end = nTimes - 1; start = Math.max(0, start); }
+        return { start, end };
+    })();
+
+    const handleZoomIn = useCallback(() => {
+        setZoomLevel((z) => Math.min(z + 1, ZOOM_LEVELS.length - 1));
+    }, []);
+    const handleZoomOut = useCallback(() => {
+        setZoomLevel((z) => Math.max(z - 1, 0));
+    }, []);
+    const handleWheel = useCallback((e) => {
+        e.preventDefault();
+        if (e.deltaY < 0) setZoomLevel((z) => Math.min(z + 1, ZOOM_LEVELS.length - 1));
+        else setZoomLevel((z) => Math.max(z - 1, 0));
+    }, []);
+
+    const contentRef = useRef(null);
+    useEffect(() => {
+        const el = contentRef.current;
+        if (!el) return;
+        el.addEventListener('wheel', handleWheel, { passive: false });
+        return () => el.removeEventListener('wheel', handleWheel);
+    }, [handleWheel]);
 
     if (!eegData) {
         return (
@@ -146,7 +162,7 @@ export default function Timeline({
                 </div>
 
                 <div className="tl-tabs">
-                    {['curves', 'heatmap', 'session'].map((mode) => (
+                    {['curves', 'heatmap'].map((mode) => (
                         <button
                             key={mode}
                             className={`tl-tab ${viewMode === mode ? 'tl-tab-active' : ''}`}
@@ -167,19 +183,31 @@ export default function Timeline({
                             >
                                 <option value="motor">Motor (C3, Cz, C4)</option>
                                 <option value="all">All channels (avg)</option>
+                                <option 
+                                    value="all_individual" 
+                                    disabled={selectedClasses.size !== 1}
+                                >
+                                    All channels (individual lines)*
+                                </option>
                                 {channels.map((ch) => (
                                     <option key={ch} value={ch}>
                                         {ch}
                                     </option>
                                 ))}
                             </select>
+                            {selectedClasses.size !== 1 && channelMode === 'all_individual' && (
+                                <span style={{fontSize: '10px', color: '#ff4444', marginLeft: '8px'}}>*Requires exactly 1 class</span>
+                            )}
                             <button
                                 className={`tl-btn tl-layout-btn ${stacked ? 'tl-btn-active' : ''}`}
                                 onClick={() => setStacked(!stacked)}
+                                disabled={selectedClasses.size <= 1}
                                 title={
-                                    stacked
-                                        ? 'Switch to overlay'
-                                        : 'Switch to stacked'
+                                    selectedClasses.size <= 1
+                                        ? 'Select multiple classes to switch layout'
+                                        : stacked
+                                            ? 'Switch to overlay'
+                                            : 'Switch to stacked'
                                 }
                             >
                                 {stacked ? 'Stacked' : 'Overlay'}
@@ -188,13 +216,23 @@ export default function Timeline({
                     )}
                 </div>
 
+                <div className="tl-zoom-controls">
+                    <button className="tl-btn" onClick={handleZoomOut} disabled={zoomLevel === 0} title="Zoom out">
+                        <svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 5h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                    </button>
+                    <span className="tl-zoom-label">{zoomFactor === 1 ? 'Fit' : `${zoomFactor}x`}</span>
+                    <button className="tl-btn" onClick={handleZoomIn} disabled={zoomLevel === ZOOM_LEVELS.length - 1} title="Zoom in">
+                        <svg width="10" height="10" viewBox="0 0 10 10"><path d="M5 2v6M2 5h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                    </button>
+                </div>
+
                 <div className="tl-time-display">
                     <span className="tl-time">{currentTime.toFixed(2)}s</span>
-                    <InfoPopup text="Curves: ERD/ERS time courses per motor imagery class. Heatmap: channel x time activation matrix. Session: trial structure across runs. Click canvas to jump to a time point." />
+                    <InfoPopup text="Curves: ERD/ERS time courses per motor imagery class. Heatmap: channel x time activation matrix. Scroll to zoom. Click canvas to jump to a time point." />
                 </div>
             </div>
 
-            <div className="tl-content">
+            <div className="tl-content" ref={contentRef}>
                 {viewMode === 'curves' && (
                     <TimelineCurves
                         eegData={eegData}
@@ -204,6 +242,9 @@ export default function Timeline({
                         onTimeChange={onTimeChange}
                         channelMode={channelMode}
                         stacked={stacked}
+                        visibleRange={visibleRange}
+                        contrastMode={contrastMode}
+                        contrastOrder={contrastOrder}
                     />
                 )}
                 {viewMode === 'heatmap' && (
@@ -213,57 +254,8 @@ export default function Timeline({
                         selectedBand={selectedBand}
                         currentTimeIndex={currentTimeIndex}
                         onTimeChange={onTimeChange}
+                        visibleRange={visibleRange}
                     />
-                )}
-                {viewMode === 'session' && (
-                    <div className="tl-session">
-                        <p className="tl-session-note">
-                            ERD/ERS data is averaged across all runs. Run-level
-                            filtering requires per-run export from the backend.
-                        </p>
-                        {runs.map((run, ri) => (
-                            <div key={ri} className="tl-run">
-                                <div className="tl-run-header">
-                                    <span className="tl-run-label">
-                                        Run {ri + 1}
-                                    </span>
-                                    <span className="tl-run-count">
-                                        {run.length} trials
-                                    </span>
-                                </div>
-                                <div className="tl-run-trials">
-                                    {run.map((evt, ei) => (
-                                        <div
-                                            key={ei}
-                                            className={`tl-trial ${selectedClasses.has(evt.class) ? '' : 'tl-trial-dim'}`}
-                                            style={{
-                                                backgroundColor:
-                                                    classColorMap[evt.class] ||
-                                                    '#444',
-                                            }}
-                                            title={`${evt.class} @ ${evt.time.toFixed(1)}s`}
-                                        />
-                                    ))}
-                                </div>
-                                <div className="tl-run-stats">
-                                    {eegData.dataset.classes.map((cls) => {
-                                        const count = run.filter(
-                                            (e) => e.class === cls.id,
-                                        ).length;
-                                        return count > 0 ? (
-                                            <span
-                                                key={cls.id}
-                                                className="tl-run-stat"
-                                                style={{ color: cls.color }}
-                                            >
-                                                {count}
-                                            </span>
-                                        ) : null;
-                                    })}
-                                </div>
-                            </div>
-                        ))}
-                    </div>
                 )}
             </div>
 

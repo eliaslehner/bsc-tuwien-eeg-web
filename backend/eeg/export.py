@@ -118,19 +118,21 @@ def generate_synthetic_data(channels=None, channel_regions=None):
         classes = {}
 
         for cn in CLASS_INFO:
-            data = np.zeros((n_ch, n_bins))
-            for i, ch in enumerate(channels):
-                h, c = hw.get(ch, 0), cw.get(ch, 0.3)
-                if cn == 'left_hand':
-                    s = (0.5 + 0.5 * h) * c * scale
-                elif cn == 'right_hand':
-                    s = (0.5 - 0.5 * h) * c * scale
-                elif cn == 'feet':
-                    s = c * scale * 0.8
-                else:  # tongue
-                    s = 0.3 * scale
-                data[i] = erd_curve(times, peak=-45 * s + rng.normal(0, 3)) \
-                    + rng.normal(0, 2, n_bins)
+            n_sim_trials = 68  # roughly clean trials
+            data = np.zeros((n_sim_trials, n_ch, n_bins))
+            for t_idx in range(n_sim_trials):
+                for i, ch in enumerate(channels):
+                    h, c = hw.get(ch, 0), cw.get(ch, 0.3)
+                    if cn == 'left_hand':
+                        s = (0.5 + 0.5 * h) * c * scale
+                    elif cn == 'right_hand':
+                        s = (0.5 - 0.5 * h) * c * scale
+                    elif cn == 'feet':
+                        s = c * scale * 0.8
+                    else:  # tongue
+                        s = 0.3 * scale
+                    data[t_idx, i] = erd_curve(times, peak=-45 * s + rng.normal(0, 3)) \
+                        + rng.normal(0, 5, n_bins)
             classes[cn] = data
 
         erd_ers_data[band] = {'range': [lo, hi], 'times': times, 'classes': classes}
@@ -164,7 +166,7 @@ def generate_synthetic_data(channels=None, channel_regions=None):
         'baseline_tmin': -0.5,
         'baseline_tmax': 0.0,
         'trial_counts': {cn: 72 for cn in CLASS_INFO},
-        'clean_counts': {cn: int(rng.integers(65, 73)) for cn in CLASS_INFO},
+        'clean_counts': {cn: 68 for cn in CLASS_INFO},
     }
 
     return build_eeg_json(dataset_info, events, erd_ers_data, channel_regions)

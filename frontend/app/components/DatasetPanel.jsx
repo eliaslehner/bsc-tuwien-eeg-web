@@ -10,6 +10,16 @@ export default function DatasetPanel({
     onBandChange,
     heatmapEnabled,
     onHeatmapToggle,
+    selectedRuns,
+    setSelectedRuns,
+    contrastMode,
+    setContrastMode,
+    contrastOrder,
+    setContrastOrder,
+    erdThreshold,
+    setErdThreshold,
+    multiView,
+    setMultiView,
 }) {
     if (!eegData) {
         return (
@@ -37,6 +47,28 @@ export default function DatasetPanel({
                     <span className="detail-value">{dataset.n_channels}</span>
                     <span className="detail-label">Sample Rate</span>
                     <span className="detail-value">{dataset.sfreq} Hz</span>
+                </div>
+            </div>
+
+            <div className="panel-section">
+                <div className="panel-header">
+                    <h2>Runs</h2>
+                    <InfoPopup text="Select which runs to include in the average. (Assumes 6 runs total)" />
+                </div>
+                <div className="run-selector">
+                    {[0, 1, 2, 3, 4, 5].map((run) => (
+                        <button
+                            key={run}
+                            className={`run-btn ${selectedRuns.has(run) ? 'run-active' : ''}`}
+                            onClick={() => {
+                                const next = new Set(selectedRuns);
+                                if (next.has(run)) next.delete(run); else next.add(run);
+                                setSelectedRuns(next);
+                            }}
+                        >
+                            R{run + 1}
+                        </button>
+                    ))}
                 </div>
             </div>
 
@@ -80,6 +112,74 @@ export default function DatasetPanel({
                             {band === 'mu' ? 'Mu (8-13 Hz)' : 'Beta (13-30 Hz)'}
                         </button>
                     ))}
+                </div>
+            </div>
+
+            <div className="panel-section">
+                <div className="panel-header">
+                    <h2>Analysis Tools</h2>
+                    <InfoPopup text="Use contrast mode to subtract the second selected class from the first. Adjust threshold to hide noise." />
+                </div>
+                
+                <div style={{ marginBottom: '10px' }}>
+                    <label className={`analysis-check ${selectedClasses.size !== 2 ? 'analysis-check-disabled' : ''}`}>
+                        <input
+                            type="checkbox"
+                            checked={contrastMode}
+                            onChange={(e) => setContrastMode(e.target.checked)}
+                            disabled={selectedClasses.size !== 2}
+                        />
+                        Contrast Mode
+                    </label>
+                    {selectedClasses.size !== 2 && (
+                        <span className="analysis-hint">Select exactly 2 classes</span>
+                    )}
+                    {contrastMode && contrastOrder[0] && contrastOrder[1] && (
+                        <div className="contrast-order">
+                            <span className="contrast-order-label">
+                                {dataset.classes.find(c => c.id === contrastOrder[0])?.label ?? contrastOrder[0]}
+                            </span>
+                            <span className="contrast-order-minus">−</span>
+                            <span className="contrast-order-label">
+                                {dataset.classes.find(c => c.id === contrastOrder[1])?.label ?? contrastOrder[1]}
+                            </span>
+                            <button
+                                className="contrast-swap-btn"
+                                onClick={() => setContrastOrder([contrastOrder[1], contrastOrder[0]])}
+                                title="Swap subtraction order"
+                            >
+                                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                                    <path d="M3 2l-2 2 2 2"/>
+                                    <path d="M9 6l2 2-2 2"/>
+                                    <path d="M1 4h10M1 8h10"/>
+                                </svg>
+                            </button>
+                        </div>
+                    )}
+                </div>
+
+                <div className="analysis-field">
+                    <label className="analysis-slider-label">
+                        ERD Drop Threshold: {erdThreshold}%
+                    </label>
+                    <input
+                        type="range"
+                        className="analysis-slider"
+                        min="0" max="50" step="1"
+                        value={erdThreshold}
+                        onChange={(e) => setErdThreshold(parseInt(e.target.value, 10))}
+                    />
+                </div>
+
+                <div className="analysis-field">
+                    <label className="analysis-check">
+                        <input
+                            type="checkbox"
+                            checked={multiView}
+                            onChange={(e) => setMultiView(e.target.checked)}
+                        />
+                        Split 3D Multi-View
+                    </label>
                 </div>
             </div>
 

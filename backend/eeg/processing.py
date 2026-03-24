@@ -87,10 +87,11 @@ def create_epochs(raw, events, event_id, tmin=-0.5, tmax=4.0):
 def compute_band_erd_ers(epochs, l_freq, h_freq, baseline_tmin, baseline_tmax):
     """
     Compute ERD/ERS (%) for a frequency band via Hilbert transform.
+    Computes it per-trial.
 
     Returns
     -------
-    erd_ers : dict — class_name -> np.ndarray (n_channels, n_times)
+    erd_ers : dict — class_name -> np.ndarray (n_trials, n_channels, n_times)
     times : np.ndarray
     """
     times = epochs.times
@@ -111,13 +112,14 @@ def compute_band_erd_ers(epochs, l_freq, h_freq, baseline_tmin, baseline_tmax):
         filtered = class_ep.copy().filter(l_freq, h_freq, verbose=False)
         data = filtered.get_data()  # (n_trials, n_channels, n_times)
 
-        power = np.abs(hilbert(data, axis=-1)) ** 2
-        mean_power = power.mean(axis=0)  # (n_channels, n_times)
+        power = np.abs(hilbert(data, axis=-1)) ** 2  # (n_trials, n_channels, n_times)
 
-        baseline = mean_power[:, bl_mask].mean(axis=1, keepdims=True)
+        # Baseline per trial
+        baseline = power[:, :, bl_mask].mean(axis=-1, keepdims=True)
         baseline = np.maximum(baseline, 1e-10)
 
-        erd_ers[class_name] = (mean_power - baseline) / baseline * 100.0
+        trial_erd_ers = (power - baseline) / baseline * 100.0
+        erd_ers[class_name] = trial_erd_ers
 
     return erd_ers, times
 
@@ -127,7 +129,7 @@ def downsample_timecourse(data, times, n_bins):
     if n_bins >= len(times):
         return data, times
     indices = np.linspace(0, len(times) - 1, n_bins, dtype=int)
-    return data[:, indices], times[indices]
+    return data[..., indices], times[indices]
 
 
 def get_class_epoch_counts(epochs):

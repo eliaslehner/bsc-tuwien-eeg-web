@@ -39,7 +39,7 @@ function niceStep(range, maxTicks) {
 }
 
 export default function TimelineHeatmap({
-    eegData, selectedClasses, selectedBand, currentTimeIndex, onTimeChange,
+    eegData, selectedClasses, selectedBand, currentTimeIndex, onTimeChange, visibleRange,
 }) {
     const canvasRef = useRef(null);
     const containerRef = useRef(null);
@@ -100,23 +100,25 @@ export default function TimelineHeatmap({
         ctx.fillStyle = '#0d0d0d';
         ctx.fillRect(0, 0, w, h);
 
+        const vStart = visibleRange?.start ?? 0;
+        const vEnd = visibleRange?.end ?? (times.length - 1);
+        const vLen = vEnd - vStart + 1;
         const pad = { top: 4, right: 52, bottom: 22, left: 44 };
         const plotW = w - pad.left - pad.right;
         const plotH = h - pad.top - pad.bottom;
         const nCh = matrix.length;
-        const nT = times.length;
-        const cellW = plotW / nT;
+        const cellW = plotW / vLen;
         const cellH = plotH / nCh;
-        const tmin = times[0], tmax = times[nT - 1];
+        const tmin = times[vStart], tmax = times[vEnd];
         const tRange = tmax - tmin || 1;
         const xFor = (t) => pad.left + ((t - tmin) / tRange) * plotW;
 
         // Cells
         for (let ci = 0; ci < nCh; ci++) {
-            for (let ti = 0; ti < nT; ti++) {
+            for (let ti = vStart; ti <= vEnd; ti++) {
                 ctx.fillStyle = erdToColor(matrix[ci][ti], maxAbs);
                 ctx.fillRect(
-                    pad.left + ti * cellW,
+                    pad.left + (ti - vStart) * cellW,
                     pad.top + ci * cellH,
                     cellW + 0.5,
                     cellH + 0.5,
@@ -160,7 +162,7 @@ export default function TimelineHeatmap({
         ctx.setLineDash([]);
 
         // Playhead
-        if (currentTimeIndex >= 0 && currentTimeIndex < nT) {
+        if (currentTimeIndex >= vStart && currentTimeIndex <= vEnd) {
             ctx.strokeStyle = '#6ee7b7';
             ctx.lineWidth = 2;
             ctx.beginPath();
@@ -197,7 +199,7 @@ export default function TimelineHeatmap({
         ctx.fillText(`+${maxAbs.toFixed(0)}%`, lx + lw + 3, pad.top + 7);
         ctx.fillText('0%', lx + lw + 3, pad.top + plotH / 2 + 3);
         ctx.fillText(`-${maxAbs.toFixed(0)}%`, lx + lw + 3, pad.top + plotH - 1);
-    }, [matrix, maxAbs, times, orderedChannels, currentTimeIndex]);
+    }, [matrix, maxAbs, times, orderedChannels, currentTimeIndex, visibleRange]);
 
     useEffect(() => {
         const el = containerRef.current;
@@ -217,11 +219,13 @@ export default function TimelineHeatmap({
             if (!canvas || !times.length) return;
             const rect = canvas.getBoundingClientRect();
             const x = e.clientX - rect.left;
-            const tmin = times[0], tmax = times[times.length - 1];
+            const vS = visibleRange?.start ?? 0;
+            const vE = visibleRange?.end ?? (times.length - 1);
+            const tmin = times[vS], tmax = times[vE];
             const t = tmin + ((x - 44) / (rect.width - 44 - 52)) * (tmax - tmin);
-            let best = 0,
+            let best = vS,
                 bestD = Infinity;
-            for (let i = 0; i < times.length; i++) {
+            for (let i = vS; i <= vE; i++) {
                 const d = Math.abs(times[i] - t);
                 if (d < bestD) {
                     bestD = d;
@@ -230,8 +234,21 @@ export default function TimelineHeatmap({
             }
             onTimeChange(best);
         },
-        [times, onTimeChange],
+        [times, onTimeChange, visibleRange],
     );
+
+    if (activeClasses.length === 0) {
+        return (
+            <div className="tl-canvas-wrap">
+                <div className="tl-empty-state">
+                    <span className="tl-empty-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 3v18"/></svg>
+                    </span>
+                    <p>Select at least one motor imagery class to view the heatmap</p>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div ref={containerRef} className="tl-canvas-wrap">

@@ -17,7 +17,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
  * blue (ERD) - grey - red (ERS) colour scale.
  */
 function computeHeatmapColors(
-    vertexRegionIds, eegData, selectedClasses, selectedBand, timeIndex,
+    vertexRegionIds, eegData, selectedClasses, selectedBand, timeIndex, contrastMode, contrastOrder, erdThreshold
 ) {
     const bandData = eegData?.erd_ers?.[selectedBand];
     if (!bandData || !vertexRegionIds?.length) return null;
@@ -27,19 +27,27 @@ function computeHeatmapColors(
     const activeClasses = [...selectedClasses].filter((c) => bandData[c]);
     if (activeClasses.length === 0) return null;
 
-    // Per-channel average across selected classes at current time
+    // Per-channel value computation
     const channelValues = {};
     for (let i = 0; i < channels.length; i++) {
-        let sum = 0;
-        let count = 0;
-        for (const cls of activeClasses) {
-            const cd = bandData[cls];
-            if (cd?.[i]) {
-                sum += cd[i][timeIndex] ?? 0;
-                count++;
+        if (contrastMode && activeClasses.length === 2) {
+            const c1 = contrastOrder?.[0] || activeClasses[0];
+            const c2 = contrastOrder?.[1] || activeClasses[1];
+            const v1 = bandData[c1]?.[i]?.[timeIndex] ?? 0;
+            const v2 = bandData[c2]?.[i]?.[timeIndex] ?? 0;
+            channelValues[channels[i]] = v1 - v2;
+        } else {
+            let sum = 0;
+            let count = 0;
+            for (const cls of activeClasses) {
+                const cd = bandData[cls];
+                if (cd?.[i]) {
+                    sum += cd[i][timeIndex] ?? 0;
+                    count++;
+                }
             }
+            if (count > 0) channelValues[channels[i]] = sum / count;
         }
-        if (count > 0) channelValues[channels[i]] = sum / count;
     }
 
     // Map channels to regions
@@ -70,19 +78,27 @@ function computeHeatmapColors(
         const val = regionAvg[rid];
 
         if (val !== undefined) {
-            const norm = Math.max(-1, Math.min(1, val / maxAbs));
-            if (norm < 0) {
-                // Blue — ERD / desynchronisation
-                const t = -norm;
-                colors[i * 3]     = 0.15 * (1 - t) + 0.10 * t;
-                colors[i * 3 + 1] = 0.15 * (1 - t) + 0.40 * t;
-                colors[i * 3 + 2] = 0.15 * (1 - t) + 0.90 * t;
+            // Apply threshold filter
+            if (Math.abs(val) < (erdThreshold || 0)) {
+                // Below threshold: neutral dark grey
+                colors[i * 3]     = 0.2;
+                colors[i * 3 + 1] = 0.2;
+                colors[i * 3 + 2] = 0.2;
             } else {
-                // Red — ERS / synchronisation
-                const t = norm;
-                colors[i * 3]     = 0.15 * (1 - t) + 0.90 * t;
-                colors[i * 3 + 1] = 0.15 * (1 - t) + 0.20 * t;
-                colors[i * 3 + 2] = 0.15 * (1 - t) + 0.10 * t;
+                const norm = Math.max(-1, Math.min(1, val / maxAbs));
+                if (norm < 0) {
+                    // Blue — ERD / desynchronisation
+                    const t = -norm;
+                    colors[i * 3]     = 0.15 * (1 - t) + 0.10 * t;
+                    colors[i * 3 + 1] = 0.15 * (1 - t) + 0.40 * t;
+                    colors[i * 3 + 2] = 0.15 * (1 - t) + 0.90 * t;
+                } else {
+                    // Red — ERS / synchronisation
+                    const t = norm;
+                    colors[i * 3]     = 0.15 * (1 - t) + 0.90 * t;
+                    colors[i * 3 + 1] = 0.15 * (1 - t) + 0.20 * t;
+                    colors[i * 3 + 2] = 0.15 * (1 - t) + 0.10 * t;
+                }
             }
         } else {
             // No electrode maps here — dark grey
@@ -102,6 +118,10 @@ export default function BrainViewer({
     selectedBand,
     currentTimeIndex,
     heatmapEnabled,
+    contrastMode,
+    contrastOrder,
+    erdThreshold,
+    multiView,
 }) {
     const containerRef = useRef(null);
     const tooltipRef = useRef(null);
@@ -112,6 +132,11 @@ export default function BrainViewer({
     const origColorsRef = useRef(null);
     const materialRef = useRef(null);
     const heatmapValuesRef = useRef({});
+    const configRef = useRef({ multiView });
+
+    useEffect(() => {
+        configRef.current.multiView = multiView;
+    }, [multiView]);
 
     // ---- Heatmap effect ----
     useEffect(() => {
@@ -122,8 +147,18 @@ export default function BrainViewer({
 
         const colorAttr = mesh.geometry.attributes.color;
 
-        if (!heatmapEnabled || !eegData) {
-            colorAttr.array.set(origColors);
+        const activeClasses = [...selectedClasses].filter(
+            (c) => eegData?.erd_ers?.[selectedBand]?.[c]
+        );
+
+        if (!heatmapEnabled || !eegData || activeClasses.length === 0) {
+            // Show neutral grey when heatmap is off or no classes are active
+            const n = colorAttr.array.length / 3;
+            for (let i = 0; i < n; i++) {
+                colorAttr.array[i * 3]     = 0.18;
+                colorAttr.array[i * 3 + 1] = 0.18;
+                colorAttr.array[i * 3 + 2] = 0.18;
+            }
             colorAttr.needsUpdate = true;
             heatmapValuesRef.current = {};
             return;
@@ -135,17 +170,26 @@ export default function BrainViewer({
             selectedClasses,
             selectedBand,
             currentTimeIndex,
+            contrastMode,
+            contrastOrder,
+            erdThreshold
         );
 
         if (result) {
             colorAttr.array.set(result.colors);
             heatmapValuesRef.current = result.regionAvg;
         } else {
-            colorAttr.array.set(origColors);
+            // No valid result — neutral grey
+            const n = colorAttr.array.length / 3;
+            for (let i = 0; i < n; i++) {
+                colorAttr.array[i * 3]     = 0.18;
+                colorAttr.array[i * 3 + 1] = 0.18;
+                colorAttr.array[i * 3 + 2] = 0.18;
+            }
             heatmapValuesRef.current = {};
         }
         colorAttr.needsUpdate = true;
-    }, [heatmapEnabled, eegData, selectedClasses, selectedBand, currentTimeIndex]);
+    }, [heatmapEnabled, eegData, selectedClasses, selectedBand, currentTimeIndex, contrastMode, contrastOrder, erdThreshold]);
 
     // ---- Three.js setup (once) ----
     useEffect(() => {
@@ -222,6 +266,14 @@ export default function BrainViewer({
                 };
             });
 
+        // --- Multi-View Cameras ---
+        const leftCamera = new THREE.PerspectiveCamera(50, 1, 0.1, 5000);
+        const topCamera = new THREE.PerspectiveCamera(50, 1, 0.1, 5000);
+        const rightCamera = new THREE.PerspectiveCamera(50, 1, 0.1, 5000);
+        
+        let centerPoint = new THREE.Vector3();
+        let maxDimVal = 100;
+
         // --- Load brain mesh PLY ---
         const loader = new PLYLoader();
         loader.load('/data/brain_mesh_destrieux_mapped.ply', (geometry) => {
@@ -248,8 +300,11 @@ export default function BrainViewer({
             // Centre camera on the mesh
             const box = new THREE.Box3().setFromObject(brainMesh);
             const centre = box.getCenter(new THREE.Vector3());
+            centerPoint.copy(centre);
             const size = box.getSize(new THREE.Vector3());
             const maxDim = Math.max(size.x, size.y, size.z);
+            maxDimVal = maxDim;
+            
             camera.position.set(
                 centre.x,
                 centre.y,
@@ -257,6 +312,22 @@ export default function BrainViewer({
             );
             controls.target.copy(centre);
             controls.update();
+
+            // Set up multi-view cameras
+            // Left hemisphere: camera on the left side (-X) looking right
+            leftCamera.position.set(centre.x - maxDim * 1.5, centre.y, centre.z);
+            leftCamera.up.set(0, 1, 0);
+            leftCamera.lookAt(centre);
+
+            // Right hemisphere: camera on the right side (+X) looking left
+            rightCamera.position.set(centre.x + maxDim * 1.5, centre.y, centre.z);
+            rightCamera.up.set(0, 1, 0);
+            rightCamera.lookAt(centre);
+
+            // Top view: camera above (+Y) looking down
+            topCamera.position.set(centre.x, centre.y + maxDim * 1.5, centre.z);
+            topCamera.up.set(0, 0, -1);
+            topCamera.lookAt(centre);
 
             setLoading(false);
         });
@@ -316,7 +387,42 @@ export default function BrainViewer({
         const animate = () => {
             frameId = requestAnimationFrame(animate);
             controls.update();
-            composer.render();
+            
+            if (configRef.current.multiView) {
+                // Split-screen render (Left, Top, Right)
+                const w = container.clientWidth;
+                const h = container.clientHeight;
+                const w3 = Math.floor(w / 3);
+                
+                renderer.setScissorTest(true);
+                
+                // Left Hemisphere (Left Camera)
+                renderer.setViewport(0, 0, w3, h);
+                renderer.setScissor(0, 0, w3, h);
+                leftCamera.aspect = w3 / h;
+                leftCamera.updateProjectionMatrix();
+                renderer.render(scene, leftCamera);
+                
+                // Top View
+                renderer.setViewport(w3, 0, w3, h);
+                renderer.setScissor(w3, 0, w3, h);
+                topCamera.aspect = w3 / h;
+                topCamera.updateProjectionMatrix();
+                renderer.render(scene, topCamera);
+                
+                // Right Hemisphere
+                renderer.setViewport(w3 * 2, 0, w - w3 * 2, h);
+                renderer.setScissor(w3 * 2, 0, w - w3 * 2, h);
+                rightCamera.aspect = (w - w3 * 2) / h;
+                rightCamera.updateProjectionMatrix();
+                renderer.render(scene, rightCamera);
+                
+                renderer.setScissorTest(false);
+            } else {
+                // Default SSAO Render
+                renderer.setViewport(0, 0, container.clientWidth, container.clientHeight);
+                composer.render();
+            }
         };
         animate();
 
@@ -351,6 +457,22 @@ export default function BrainViewer({
                     <div className="loader">
                         <div className="spinner" />
                         <p>Loading brain model...</p>
+                    </div>
+                )}
+                {heatmapEnabled && !loading && (
+                    <div className="brain-legend">
+                        <div className="brain-legend-bar">
+                            <div className="brain-legend-gradient" />
+                            <div className="brain-legend-labels">
+                                <span>ERS +</span>
+                                <span>0</span>
+                                <span>ERD −</span>
+                            </div>
+                        </div>
+                        <div className="brain-legend-desc">
+                            <span className="brain-legend-item"><span className="brain-legend-dot brain-legend-dot-red" />Synchronization (power increase)</span>
+                            <span className="brain-legend-item"><span className="brain-legend-dot brain-legend-dot-blue" />Desynchronization (power decrease)</span>
+                        </div>
                     </div>
                 )}
             </div>
