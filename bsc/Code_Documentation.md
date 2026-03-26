@@ -365,7 +365,9 @@ frontend/
 │   └── components/
 │       ├── BrainViewer.jsx      Three.js 3D renderer + SSAO + heatmap overlay
 │       ├── DatasetPanel.jsx     Left panel: dataset info, class filters, band selector
-│       ├── Timeline.jsx         Bottom panel: session events + epoch scrubber + playback
+│       ├── Timeline.jsx         Bottom panel: zoomable epoch scrubber + playback
+│       ├── TimelineCurves.jsx   Per-channel ERD/ERS curve visualisation
+│       ├── TimelineHeatmap.jsx  Heatmap grid view for time-series data
 │       ├── InfoPopup.jsx        Small "?" icon that opens an explanation popup
 │       └── ElectrodeSidebar.jsx (kept but unused — was the old electrode list sidebar)
 ├── public/
@@ -396,9 +398,9 @@ All callbacks are wrapped in `useCallback` to avoid unnecessary child re-renders
 
 #### `BrainViewer.jsx` — Three.js 3D Renderer + Heatmap
 
-The base scene setup (renderer, camera, lights, controls, raycasting, SSAO post-processing) is unchanged from the previous version. The main additions are heatmap rendering and an enhanced tooltip.
+The base scene setup handles WebGL rendering, camera, lights, orbit controls, raycasting, and SSAO post-processing. Recent additions introduce advanced viewing and colouring modes. It now supports a split 3-view multi-camera rendering (left, top, and right views) along with a simple legend. 
 
-**Heatmap Overlay**
+**Heatmap and Contrast Overlay**
 
 A dedicated `useEffect` reacts to changes in `heatmapEnabled`, `selectedClasses`, `selectedBand`, `currentTimeIndex`, and `eegData`. When the heatmap is enabled, it computes per-vertex colours via the `computeHeatmapColors` helper function:
 
@@ -425,19 +427,20 @@ The hover handler now also checks `heatmapValuesRef` — a ref that stores the c
 
 Fetches its data from the `eegData` prop (loaded by `page.js`). Divided into four sections:
 
-1. **Dataset Details** — grid showing name, subject ID, channel count, and sample rate. A `?` info popup shows the full dataset description text.
-2. **Motor Imagery Classes** — four toggle buttons (left hand, right hand, feet, tongue), each with a coloured indicator dot matching the class colour, the class label, and a trial count (clean/total). Clicking a button toggles that class in the `selectedClasses` set. The heatmap shows the average across all selected classes.
+1. **Dataset Details** — grid showing name, subject ID, channel count, and sample rate. A `?` info popup shows the full dataset description text. Includes UI controls for selecting specific runs instead of the full session.
+2. **Motor Imagery Classes** — four toggle buttons (left hand, right hand, feet, tongue). Clicking a button toggles that class in the `selectedClasses` set. The panel also includes controls for a contrast mode (and swap order) to compare differences between classes.
 3. **Frequency Band** — two toggle buttons for mu (8–13 Hz) and beta (13–30 Hz). Only one band is active at a time.
-4. **Heatmap Toggle** — a single button that switches between atlas region colours and ERD/ERS heatmap mode.
+4. **Visualisation Controls** — toggles for heatmap display and the new multi-view layout, plus an ERD threshold slider to hide small, insignificant ERD/ERS values as neutral grey.
 
 #### `Timeline.jsx` — Bottom Panel
 
-Contains two visualisation tracks and playback controls:
+The timeline acts as the master timeline controller, maintaining a `visibleRange` window for zooming. It passes this range and contrast props to its child views (`TimelineCurves` and `TimelineHeatmap`). The old session view was removed in favour of:
 
-1. **Session events bar** — a thin horizontal track showing all 288 trial events from the recording session as coloured ticks. Each tick's horizontal position corresponds to its timestamp relative to the session duration, and its colour matches the motor imagery class. Events from deselected classes are hidden.
-2. **Epoch scrubber** — an HTML `<input type="range">` slider spanning the epoch time window (−0.5 to 4.0 s). A semi-transparent overlay marks the baseline period, and a vertical line marks the cue onset at t=0. Dragging the slider updates `currentTimeIndex` which drives the brain heatmap. Below the slider, labels show the time axis bounds and the cue position.
+1. **Epoch Scrubber & Zoom** — Provides an interactive scrubber within the epoch time window (−0.5 to 4.0 s). Supports wheel zoom and zoom levels to adjust the `visibleRange`. Dragging updates `currentTimeIndex` driving the brain heatmap.
+2. **TimelineCurves** — Displays per-channel individual lines (`all_individual`) with hover tooltips for specific electrodes. It supports stacked/overlay viewing modes and an optional difference (contrast) curve matching the 3D viewer. Drawing logic dynamically respects the `visibleRange` and interactive playhead.
+3. **TimelineHeatmap** — Renders the data within the `visibleRange` time window, adjusting cell sizing and mapping to reflect the zoomed subset.
 
-A **play/pause button** (CSS-only triangle/bars, no emoji) auto-advances the time index at ~12.5 fps (80 ms interval) using `setInterval`. The current time in seconds is displayed on the right in monospace font.
+A **play/pause button** auto-advances the time index at ~12.5 fps (80 ms interval) using `setInterval`. The current time in seconds is displayed on the right in monospace font.
 
 The play button uses a `useRef` to track the current index inside the interval callback, avoiding the stale closure problem that would occur if it read `currentTimeIndex` directly from props.
 
@@ -558,17 +561,17 @@ Computes Event-Related Desynchronisation / Synchronisation (ERD/ERS) for a given
 1. For each motor imagery class, select the corresponding epochs.
 2. Bandpass filter the epochs to the target band (e.g. 8–13 Hz for mu).
 3. Apply the Hilbert transform (`scipy.signal.hilbert`) to get the analytic signal, then take |analytic|² for instantaneous power.
-4. Average power across all trials of that class.
-5. Compute baseline power as the mean over the baseline time window.
-6. Express ERD/ERS as percentage change: `(power − baseline) / baseline × 100`.
+4. Computes per-trial power and per-trial baseline power over the baseline time window, rather than averaging across all trials initially.
+5. Compute baseline power as the mean over the baseline time window per trial.
+6. Express ERD/ERS as percentage change: `(power − baseline) / baseline × 100` for each trial.
 
 Negative values indicate desynchronisation (ERD), which is the expected pattern during motor imagery — the sensorimotor rhythm is suppressed when the subject imagines movement. Positive values indicate synchronisation (ERS), sometimes seen as a post-movement rebound.
 
-Returns a dict mapping class names to (n_channels, n_times) arrays and the corresponding time vector.
+Returns a dict mapping class names to per-trial `(n_trials, n_channels, n_times)` arrays and the corresponding time vector.
 
 ##### `downsample_timecourse(data, times, n_bins)`
 
-Downsamples the ERD/ERS time courses to a fixed number of bins (default 90) for JSON export. Uses `np.linspace` to pick evenly spaced indices from the full-resolution data. At 250 Hz with a 4.5 s epoch, the raw data has 1125 time points — downsampling to 90 bins (one every ~50 ms) keeps the JSON small (~128 KB total) while preserving the temporal structure.
+Downsamples the ERD/ERS time courses to a fixed number of bins (default 90) for JSON export. Uses `np.linspace` to pick evenly spaced indices from the full-resolution data. It robustly supports trailing dimensions when slicing time points, ensuring it can gracefully handle the new per-trial `(n_trials, n_channels, n_times)` array shapes alongside averages. At 250 Hz with a 4.5 s epoch, the raw data has 1125 time points — downsampling to 90 bins (one every ~50 ms) keeps the JSON small (~128 KB total) while preserving the temporal structure.
 
 #### `export.py`
 
@@ -593,7 +596,7 @@ Generates realistic-looking synthetic ERD/ERS data when no GDF files are availab
 - **Feet imagery** — ERD concentrated over central/midline channels (Cz, FCz, CPz)
 - **Tongue imagery** — more distributed, weaker pattern
 
-The temporal envelope uses a sigmoid onset at ~0.3 s post-cue with exponential decay, matching the typical ERD time course observed in real motor imagery data. Channel lateralisation is determined by the electrode numbering convention (odd numbers = left hemisphere, even = right, `z` suffix = midline). Small Gaussian noise is added for visual realism.
+It now generates this data on a per-trial basis (e.g. `n_sim_trials=68` per class) with a higher per-trial noise level for added visual realism, returning properly nested arrays with fixes around the `clean_counts` metric. The temporal envelope uses a sigmoid onset at ~0.3 s post-cue with exponential decay, matching the typical ERD time course observed in real motor imagery data. Channel lateralisation is determined by the electrode numbering convention (odd numbers = left hemisphere, even = right, `z` suffix = midline).
 
 Also generates 288 synthetic session events distributed across 6 runs with randomised inter-trial intervals.
 

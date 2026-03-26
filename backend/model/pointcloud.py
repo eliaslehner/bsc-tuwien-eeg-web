@@ -98,7 +98,7 @@ def generate_and_export(config, masked_volume, atlas_volume, id_to_palette_idx, 
 
     # ── Optional decimation (in voxel space, before region assignment) ──
     if config.mesh_target_faces > 0 and len(faces) > config.mesh_target_faces:
-        print(f"  Decimating: {len(faces):,} → {config.mesh_target_faces:,} target faces...")
+        print(f"  Decimating: {len(faces):,} -> {config.mesh_target_faces:,} target faces...")
         mesh = mesh.simplify_quadric_decimation(config.mesh_target_faces)
         verts = np.asarray(mesh.vertices)
         faces = np.asarray(mesh.triangles)
@@ -141,7 +141,7 @@ def generate_and_export(config, masked_volume, atlas_volume, id_to_palette_idx, 
 
     # ── Export ──
     o3d.io.write_triangle_mesh(mapped_path, mesh)
-    print(f"  Exported mapped mesh → {mapped_path}")
+    print(f"  Exported mapped mesh -> {mapped_path}")
     print(f"    {len(verts_centered):,} vertices, {len(faces_flipped):,} faces")
 
     if config.copy_mapped_mesh_to_frontend:
@@ -149,7 +149,7 @@ def generate_and_export(config, masked_volume, atlas_volume, id_to_palette_idx, 
         os.makedirs(frontend_dir, exist_ok=True)
         dest = os.path.join(frontend_dir, config.mapped_mesh_ply_filename)
         shutil.copy2(mapped_path, dest)
-        print(f"  Copied to frontend → {dest}")
+        print(f"  Copied to frontend -> {dest}")
 
     print("  Mesh generation done.")
     return [int(r) for r in vertex_region_ids]

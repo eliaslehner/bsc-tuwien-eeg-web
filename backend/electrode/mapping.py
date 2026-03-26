@@ -88,7 +88,7 @@ def map_electrodes_to_regions(channel_coords, brain_nii, atlas_volume, names_map
             "region_name": region_name,
         })
 
-        print(f"  {ch_name:>4s}  →  voxel {hit_voxel.astype(int)}  →  [{region_id}] {region_name}")
+        print(f"  {ch_name:>4s}  ->  voxel {hit_voxel.astype(int)}  ->  [{region_id}] {region_name}")
 
     return mappings
 
@@ -198,7 +198,7 @@ def run_electrode_pipeline(config, brain_nii, atlas_volume, names_map, centroid,
     with open(config.output_json_path, 'w', encoding='utf-8') as f:
         json.dump(output, f, indent=2, ensure_ascii=False)
 
-    print(f"\nExported → {config.output_json_path}")
+    print(f"\nExported -> {config.output_json_path}")
     print(f"  {len(output['electrodes'])} electrodes")
     print(f"  {len(output['regions'])} regions")
     print(f"  {len(output['region_electrodes'])} regions with electrodes")

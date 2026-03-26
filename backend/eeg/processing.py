@@ -116,7 +116,7 @@ def compute_band_erd_ers(epochs, l_freq, h_freq, baseline_tmin, baseline_tmax):
 
         # Baseline per trial
         baseline = power[:, :, bl_mask].mean(axis=-1, keepdims=True)
-        baseline = np.maximum(baseline, 1e-10)
+        baseline = np.maximum(baseline, np.finfo(float).tiny)
 
         trial_erd_ers = (power - baseline) / baseline * 100.0
         erd_ers[class_name] = trial_erd_ers

@@ -51,23 +51,36 @@ def load_gdf(filepath):
 
 def setup_channels(raw):
     """
-    Set proper channel types and strip name prefixes.
+    Set proper channel types and names for BCI Competition IV 2a GDF files.
 
-    The BCI Competition IV 2a GDF files have 25 channels:
-    22 EEG + 3 EOG.  Channel names may have 'EEG-' or 'EOG-' prefixes.
+    The GDF files have 25 channels: 22 EEG + 3 EOG.
+    Channel names in the GDF are often stored as duplicate 'EEG' labels,
+    causing MNE to assign running numbers (EEG-0, EEG-1, …).
+    We rename the first 22 channels to the known standard 10-20 names.
     """
-    ch_names = raw.ch_names
+    n = len(raw.ch_names)
+    eeg_count = min(22, n)
 
+    # Rename EEG channels to standard 10-20 names
     rename_map = {}
-    for name in ch_names:
-        clean = name.replace('EEG-', '').replace('EOG-', 'EOG')
-        if clean != name:
-            rename_map[name] = clean
+    for i in range(eeg_count):
+        old = raw.ch_names[i]
+        expected = STANDARD_EEG_CHANNELS[i]
+        if old != expected:
+            rename_map[old] = expected
+
+    # Rename EOG channels
+    eog_standard = ['EOG-left', 'EOG-central', 'EOG-right']
+    for i in range(22, min(25, n)):
+        old = raw.ch_names[i]
+        expected = eog_standard[i - 22]
+        if old != expected:
+            rename_map[old] = expected
+
     if rename_map:
         raw.rename_channels(rename_map)
 
-    n = len(raw.ch_names)
-    eeg_channels = list(raw.ch_names[:min(22, n)])
+    eeg_channels = list(STANDARD_EEG_CHANNELS[:eeg_count])
     eog_channels = list(raw.ch_names[22:25]) if n >= 25 else []
 
     if eog_channels:

@@ -161,3 +161,24 @@ The fix is to re-reference to a **Common Average Reference (CAR)** before the Hi
 In `processing.py` I added `raw.set_eeg_reference('average', projection=False, verbose=False)` to `preprocess_raw`, inserted after picking the 22 EEG channels (so the mean is computed only over EEG, not EOG) and before the bandpass filter (so the filter operates on the already-corrected signal). The `projection=False` flag applies the reference directly to the data rather than storing it as an MNE projector, which keeps the rest of the pipeline simpler.
 
 An even stronger fix would be a Surface Laplacian (Current Source Density) transform, which not only removes the reference but also spatially sharpens the signal by suppressing volume conduction. That could be added later if the heatmap spatial resolution needs to improve, but CAR is the correct minimum step.
+
+## Advanced Frontend Analysis and Per-Trial Processing - 24.03.2026
+
+The next step was to provide more granular data analysis by transitioning from averaged ERD/ERS to a per-trial level. To support this, I updated the backend to output per-trial ERD/ERS data. Specifically, `compute_band_erd_ers` was changed to compute power and baseline per-trial, returning per-trial arrays. The `downsample_timecourse` function was also updated to reliably support trailing dimensions when slicing time points. For development, the synthetic ERD/ERS generator now generates 68 simulated trials per class with a higher per-trial noise level for added realism, and I fixed a bug related to `clean_counts`.
+
+On the frontend, this new per-trial data allowed for significantly richer analysis tools:
+
+**BrainViewer Updates:**
+- **Contrast Subtraction Mode:** Added a mode to compute the difference between classes, rather than just showing their average.
+- **ERD Thresholding:** Implemented a threshold logic to treat small, insignificant ERD/ERS values as visually neutral grey, highlighting the most relevant patterns. Missing data is now coloured securely as neutral grey.
+- **Multi-Camera Rendering (Split View):** Enhanced the renderer to support a split 3-view showing the brain from the left, top, and right simultaneously, alongside a simple legend. 
+
+**Dataset Panel & Controls:**
+- In the `DatasetPanel`, I added new UI controls for the new features. Users can now select specific runs, toggle the contrast mode (and swap the contrast order), adjust the ERD threshold via a slider, and easily toggle the new multi-view layout.
+
+**Timeline Redesign:**
+- The timeline was significantly upgraded to better navigate the trial data. I removed the old session view to focus on the epoch bounds, adding wheel zoom functionality that creates a dynamic `visibleRange` window. This `visibleRange` is passed down to child views for synchronous updating.
+- `TimelineHeatmap` now only renders the data within the `visibleRange` time window, properly adapting cell sizing and mapping to fill the view.
+- `TimelineCurves` gained support for showing all 22 individual channel lines simultaneously (`all_individual`), including hover tooltips that identify specific electrodes. I also improved stacked and overlay visualisations and added support for an optional difference (contrast) curve matching the 3D brain view. The drawing logic dynamically respects the `visibleRange` and the interactive playhead.
+
+Overall, these updates tighten the connection between the backend's data extraction and the frontend's visualisations. The per-trial capabilities, along with zooming, contrast views, and electrode-specific details, transform the tool into a much more robust analytical dashboard.
