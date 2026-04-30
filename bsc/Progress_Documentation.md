@@ -181,4 +181,27 @@ On the frontend, this new per-trial data allowed for significantly richer analys
 - `TimelineHeatmap` now only renders the data within the `visibleRange` time window, properly adapting cell sizing and mapping to fill the view.
 - `TimelineCurves` gained support for showing all 22 individual channel lines simultaneously (`all_individual`), including hover tooltips that identify specific electrodes. I also improved stacked and overlay visualisations and added support for an optional difference (contrast) curve matching the 3D brain view. The drawing logic dynamically respects the `visibleRange` and the interactive playhead.
 
+**Run Selection & Data Aggregation:**
+- Added a run selector (R1–R6 buttons) in the DatasetPanel so users can include/exclude individual runs from the analysis. The `page.js` root component computes an `activeData` object via `useMemo` that aggregates only the trials belonging to selected runs. This derived data is what all child components receive, so toggling a run instantly updates the heatmap, curves, and heatmap grid.
+
+**Playback Speed Selector:**
+- The timeline play button now supports four speed settings (0.5×, 1×, 2×, 4×) via a speed button that cycles through the options. The `setInterval` duration is adjusted accordingly.
+
+**TimelineHeatmap Channel Ordering:**
+- The heatmap grid uses a fixed `CHANNEL_ORDER` array that arranges the 22 channels from frontal to posterior (Fz → FC → C → CP → P → POz → Oz). Visual group separators at indices [6, 13, 18] divide the channels into anatomical bands (frontocentral / central / centroparietal / parietal). A vertical colour legend on the right side shows the blue–grey–red gradient with percentage labels.
+
+**Help Modal:**
+- Added a help button in the header that opens a full-screen modal dialog explaining the theory behind motor imagery, contralateral control, and ERD/ERS interpretation. The modal uses card-based sections and is styled with backdrop blur to keep the dark theme consistent.
+
+**Legend for the 3D Viewer:**
+- When the heatmap is enabled, a DOM-based legend appears in the bottom-right of the BrainViewer showing the diverging colour scale (red = ERS at top, grey = neutral, blue = ERD at bottom) with labels.
+
 Overall, these updates tighten the connection between the backend's data extraction and the frontend's visualisations. The per-trial capabilities, along with zooming, contrast views, and electrode-specific details, transform the tool into a much more robust analytical dashboard.
+
+## Baseline floor fix and channel naming robustness - 06.04.2026
+
+Two small but important fixes:
+
+**Baseline floor was too large:** In `compute_band_erd_ers`, the baseline power denominator was clamped with `np.maximum(baseline, 1e-10)` to avoid division by zero. The problem was that `1e-10` is actually quite large relative to the scale of EEG power values — a near-zero baseline would get inflated to `1e-10`, producing artificially small ERD/ERS percentages. Changed the floor to `np.finfo(float).tiny` (~2.2e-308), which is effectively the smallest representable positive float. This only prevents actual zero division without distorting the calculation.
+
+**GDF channel naming robustness:** The `setup_channels` function in `loader.py` was updated to handle a wider range of GDF channel naming conventions. The old code assumed channel names had `'EEG-'` or `'EOG-'` prefixes and just stripped those. In practice, some GDF files store all channels as duplicate `'EEG'` labels, causing MNE to assign running numbers (`EEG-0`, `EEG-1`, …). The new code unconditionally renames the first 22 channels to the known standard 10-20 names from `STANDARD_EEG_CHANNELS`, and the last 3 to `EOG-left`, `EOG-central`, `EOG-right`. This is more robust because it doesn't depend on what names the GDF header happens to use.

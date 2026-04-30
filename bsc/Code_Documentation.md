@@ -384,7 +384,7 @@ frontend/
 
 #### `page.js` — Application Root
 
-A `'use client'` component that composes the three-panel layout: `DatasetPanel` (left), `BrainViewer` (centre), and `Timeline` (bottom). Manages seven state variables:
+A `'use client'` component that composes the three-panel layout: `DatasetPanel` (left), `BrainViewer` (centre), and `Timeline` (bottom). Manages twelve state variables:
 
 - `eegData` — the loaded `eeg_data.json` (fetched on mount)
 - `selectedClasses` — a `Set` of active motor imagery class IDs (all four enabled by default)
@@ -393,12 +393,21 @@ A `'use client'` component that composes the three-panel layout: `DatasetPanel` 
 - `playing` — whether the timeline auto-advances
 - `activeRegion` — brain region name from 3D hover
 - `heatmapEnabled` — toggles between atlas region colours and ERD/ERS heatmap
+- `selectedRuns` — a `Set` of run indices (0–5, all six enabled by default). Controls which of the 6 session runs contribute to the averaged ERD/ERS values.
+- `contrastMode` — boolean, enables subtraction view (Class A − Class B) instead of averaging
+- `contrastOrder` — two-element array `[classA, classB]` defining the subtraction order. Set automatically when exactly two classes are selected; reset to `[null, null]` otherwise.
+- `erdThreshold` — number (0–50), hides ERD/ERS values whose absolute magnitude falls below this percentage, rendering them as neutral grey on the heatmap
+- `multiView` — boolean, switches the 3D viewer from a single interactive camera to a three-panel split view (left hemisphere, top, right hemisphere)
 
-All callbacks are wrapped in `useCallback` to avoid unnecessary child re-renders. The class toggle creates a new `Set` on each call so React detects the state change by reference.
+A `useMemo` hook computes `activeData` — a filtered and re-aggregated version of `eegData` that only includes trials from the selected runs. This derived object is what gets passed to child components, so changing the run selection automatically updates the heatmap and timeline without re-fetching the JSON.
+
+The page also includes a **help modal** (toggled by a `?` button in the header) that provides theory context about motor imagery, contralateral control, and ERD/ERS interpretation.
+
+All callbacks are wrapped in `useCallback` to avoid unnecessary child re-renders. The class toggle creates a new `Set` on each call so React detects the state change by reference. Contrast mode is automatically disabled when `selectedClasses` size is not exactly 2.
 
 #### `BrainViewer.jsx` — Three.js 3D Renderer + Heatmap
 
-The base scene setup handles WebGL rendering, camera, lights, orbit controls, raycasting, and SSAO post-processing. Recent additions introduce advanced viewing and colouring modes. It now supports a split 3-view multi-camera rendering (left, top, and right views) along with a simple legend. 
+The base scene setup handles WebGL rendering, camera, lights, orbit controls, raycasting, and SSAO post-processing. The component accepts props for `eegData`, `selectedClasses`, `selectedBand`, `currentTimeIndex`, `heatmapEnabled`, `contrastMode`, `contrastOrder`, `erdThreshold`, and `multiView`.
 
 **Heatmap and Contrast Overlay**
 
@@ -417,6 +426,27 @@ The colour scale is normalised to the maximum absolute value across all mapped r
 
 When the heatmap is disabled, the original vertex colours (stored in `origColorsRef`) are restored.
 
+**Contrast Subtraction Mode**
+
+When `contrastMode` is enabled, the heatmap shows the difference between two classes instead of the average. The `contrastOrder` array `[classA, classB]` defines the subtraction — the per-channel ERD/ERS values of class B are subtracted from class A. This highlights regions where the two classes differ most (e.g. left vs right hand shows a strong lateralisation pattern).
+
+**ERD Thresholding**
+
+The `erdThreshold` prop suppresses small, insignificant ERD/ERS values. Any vertex whose region's absolute ERD/ERS value falls below the threshold is coloured as neutral dark grey (`rgb(0.2, 0.2, 0.2)`). This lets the user filter out noise and focus on the most active regions.
+
+**Multi-Camera Split View**
+
+When `multiView` is enabled, the renderer switches from the single interactive OrbitControls camera to a three-viewport layout rendered in a single frame. Each viewport has a fixed camera angle:
+- **Left panel** — camera positioned on −X, looking at the right hemisphere
+- **Centre panel** — camera positioned on +Y, looking down (top view)
+- **Right panel** — camera positioned on +X, looking at the left hemisphere
+
+The SSAO post-processing is disabled in multi-view mode (each viewport is rendered with a plain `renderer.render()` call). OrbitControls are also disabled since the cameras are fixed.
+
+**Legend**
+
+A DOM-based legend is rendered in the bottom-right of the viewer when the heatmap is enabled. It shows a vertical gradient bar from red (ERS, top) through grey (neutral) to blue (ERD, bottom), with labels and short descriptions. The legend uses `backdrop-filter: blur` styling consistent with the tooltip.
+
 **Enhanced Tooltip**
 
 The hover handler now also checks `heatmapValuesRef` — a ref that stores the current per-region ERD/ERS values computed by the heatmap effect. When hovering in heatmap mode, the tooltip shows both the region name and the ERD/ERS percentage (e.g. `"L G_precentral (-23.4%)"` ).
@@ -425,24 +455,69 @@ The hover handler now also checks `heatmapValuesRef` — a ref that stores the c
 
 #### `DatasetPanel.jsx` — Left Panel
 
-Fetches its data from the `eegData` prop (loaded by `page.js`). Divided into four sections:
+Fetches its data from the `eegData` prop (loaded by `page.js`). Receives props for all control state and setter callbacks (`selectedRuns`/`setSelectedRuns`, `contrastMode`/`setContrastMode`, `contrastOrder`/`setContrastOrder`, `erdThreshold`/`setErdThreshold`, `multiView`/`setMultiView`). Divided into five sections:
 
-1. **Dataset Details** — grid showing name, subject ID, channel count, and sample rate. A `?` info popup shows the full dataset description text. Includes UI controls for selecting specific runs instead of the full session.
-2. **Motor Imagery Classes** — four toggle buttons (left hand, right hand, feet, tongue). Clicking a button toggles that class in the `selectedClasses` set. The panel also includes controls for a contrast mode (and swap order) to compare differences between classes.
-3. **Frequency Band** — two toggle buttons for mu (8–13 Hz) and beta (13–30 Hz). Only one band is active at a time.
-4. **Visualisation Controls** — toggles for heatmap display and the new multi-view layout, plus an ERD threshold slider to hide small, insignificant ERD/ERS values as neutral grey.
+1. **Dataset Details** — grid showing name, subject ID, channel count, and sample rate. A `?` info popup shows the full dataset description text.
+2. **Run Selector** — a row of six toggle buttons (R1–R6) that control which of the session's 6 runs are included in the ERD/ERS aggregation. Toggling a run adds/removes its index from the `selectedRuns` set, which propagates up to `page.js` where the `activeData` memo recomputes.
+3. **Motor Imagery Classes** — four toggle buttons (left hand, right hand, feet, tongue). Clicking a button toggles that class in the `selectedClasses` set. Below this, an **Analysis Tools** subsection provides:
+   - **Contrast Mode** — a checkbox that enables subtraction view. Automatically disabled (with a hint) when exactly two classes are not selected. When enabled, shows the current contrast order (e.g. "Left Hand − Right Hand") with a swap button to reverse the subtraction direction.
+   - **ERD Threshold Slider** — a range input (0–50%) that hides low-magnitude ERD/ERS values on the heatmap. The current threshold value is shown as a label.
+   - **Multi-View Toggle** — a checkbox that switches the 3D viewer to the three-panel split layout.
+4. **Frequency Band** — two toggle buttons for mu (8–13 Hz) and beta (13–30 Hz). Only one band is active at a time.
+5. **Heatmap Toggle** — ON/OFF button to switch between the atlas region colours and the ERD/ERS heatmap overlay.
 
 #### `Timeline.jsx` — Bottom Panel
 
-The timeline acts as the master timeline controller, maintaining a `visibleRange` window for zooming. It passes this range and contrast props to its child views (`TimelineCurves` and `TimelineHeatmap`). The old session view was removed in favour of:
+The timeline acts as the master timeline controller. It receives `contrastMode` and `contrastOrder` props from `page.js` and forwards them to child views. It manages several internal state variables:
 
-1. **Epoch Scrubber & Zoom** — Provides an interactive scrubber within the epoch time window (−0.5 to 4.0 s). Supports wheel zoom and zoom levels to adjust the `visibleRange`. Dragging updates `currentTimeIndex` driving the brain heatmap.
-2. **TimelineCurves** — Displays per-channel individual lines (`all_individual`) with hover tooltips for specific electrodes. It supports stacked/overlay viewing modes and an optional difference (contrast) curve matching the 3D viewer. Drawing logic dynamically respects the `visibleRange` and interactive playhead.
-3. **TimelineHeatmap** — Renders the data within the `visibleRange` time window, adjusting cell sizing and mapping to reflect the zoomed subset.
+- `viewMode` — `'curves'` or `'heatmap'`, toggled via a layout button
+- `channelMode` — which channels to display: `'motor'` (C3, Cz, C4), `'all'` (all averaged), `'all_individual'` (all 22 as separate lines), or a specific channel name
+- `stacked` — boolean, toggles between stacked (one lane per class) and overlay (all on same plot) layout in the curves view
+- `speedIdx` — index into `SPEED_OPTIONS` array: 0.5×, 1×, 2×, 4× playback speed
+- `zoomLevel` — index into `ZOOM_LEVELS = [1, 2, 4, 8]`
 
-A **play/pause button** auto-advances the time index at ~12.5 fps (80 ms interval) using `setInterval`. The current time in seconds is displayed on the right in monospace font.
+**Zoom** — The `visibleRange` is computed from `zoomLevel` and `currentTimeIndex`. At zoom level 1 (1×), the entire epoch is visible; at level 3 (8×), only 1/8 of the time points are shown, centred on the playhead. The zoom can be changed via +/− buttons or mouse wheel scroll on the timeline.
 
-The play button uses a `useRef` to track the current index inside the interval callback, avoiding the stale closure problem that would occur if it read `currentTimeIndex` directly from props.
+**Playback Controls** — A play/pause button, previous/next frame buttons, and a speed selector. The play interval uses `setInterval` with the duration from `SPEED_OPTIONS`. The play button uses a `useRef` to track the current index inside the interval callback, avoiding the stale closure problem.
+
+**Epoch Scrubber** — A styled `<input type="range">` at the bottom spanning the full epoch (tmin to tmax). Dragging it updates `currentTimeIndex`. The current time in seconds is displayed in monospace font.
+
+**Child Views** — Based on `viewMode`, the timeline renders either `TimelineCurves` or `TimelineHeatmap`, passing down `visibleRange`, `channelMode`, `stacked`, `contrastMode`, and `contrastOrder`.
+
+#### `TimelineCurves.jsx` — Per-Channel ERD/ERS Curves
+
+Canvas-based rendering of ERD/ERS time courses. Supports multiple viewing modes:
+
+- **`motor`** — shows only C3, Cz, C4 (the primary sensorimotor channels)
+- **`all`** — averages all 22 channels into a single curve per class
+- **`all_individual`** — draws all 22 channels as separate lines per class, with hover detection that highlights the nearest electrode and shows a tooltip (`{channelName}: {value.toFixed(1)}%`)
+- **Individual channel** — a specific channel name, showing just that channel's curve
+
+**Layout modes:**
+- **Stacked** — each selected class gets its own horizontal lane with independent Y-axis scaling
+- **Overlay** — all classes plotted on the same axes with a shared Y scale
+
+**Contrast curve** — when `contrastMode` is enabled, a dashed teal line (`#6ee7b7`) is drawn showing the Class A − Class B difference. In stacked mode this gets its own lane; in overlay mode it's drawn on top.
+
+The drawing logic respects `visibleRange` so only the zoomed time window is rendered. A green vertical playhead line marks the current time index, with dots at the intersection of each curve. The helper function `niceStep(range, maxTicks)` computes clean axis tick intervals.
+
+Clicking on the canvas jumps the playhead to that time point.
+
+#### `TimelineHeatmap.jsx` — Channel × Time Heatmap Grid
+
+Canvas-based rendering of a 2D grid with channels on the Y-axis and time on the X-axis. Each cell is coloured by its ERD/ERS value using a diverging blue–grey–red scale (the `erdToColor` function, same scheme as the 3D heatmap).
+
+Channels are ordered by a fixed `CHANNEL_ORDER` array (Fz, FC3, FC1, FCz, FC2, FC4, C3, C1, Cz, C2, C4, C6, CP3, CP1, CPz, CP2, CP4, P3, Pz, P4, POz, Oz — front to back). Visual group separators (`GROUP_BREAKS` at indices [6, 13, 18]) divide the channels into frontal/central/centroparietal/parietal bands.
+
+Features:
+- **Channel labels** on the left with adaptive font sizing
+- **Time axis** at the bottom with `niceStep`-computed tick labels
+- **Cue line** — vertical dashed line at t=0 (cue onset)
+- **Playhead** — solid vertical line at current time
+- **Colour legend** — vertical gradient bar on the right side with ± percentage labels
+- Only cells within `visibleRange` are rendered, adapting cell width to fill the canvas
+
+Clicking jumps the playhead to that time point.
 
 #### `InfoPopup.jsx` — Contextual Help
 
@@ -468,6 +543,13 @@ The CSS was restructured for the three-panel layout.
 | **Info popup** | 18px circle with `?`, absolute-positioned dropdown on click, `box-shadow` for depth |
 | **Timeline** | Bottom bar with play button (32px circle), two stacked tracks (session bar + epoch scrubber), time readout |
 | **Epoch slider** | Custom-styled `<input type="range">` with `#6ee7b7` thumb, `#2a2a2a` track |
+| **Run selector** | Flex row of R1–R6 buttons, green (`#6ee7b7`) highlight when active |
+| **Analysis tools** | Grouped controls: checkbox styling with accent colour, slider with custom thumb/track, hint text for disabled states |
+| **Contrast order** | Horizontal flex display showing `Class A − Class B` with a swap button |
+| **Brain legend** | Bottom-right positioned, vertical gradient bar (red → grey → blue), `backdrop-filter: blur` |
+| **Help modal** | Full-screen dialog with backdrop blur, card-based sections explaining motor imagery theory |
+| **Timeline zoom** | +/− buttons and zoom level indicator in the timeline controls bar |
+| **Timeline speed** | Speed selector button cycling through 0.5×–4× labels |
 | **Loader** | Absolute overlay with CSS-only spinning border animation |
 | **Tooltip** | `position: fixed`, `backdrop-filter: blur(8px)`, semi-transparent black background, rounded corners |
 | **Transitions** | 0.15s ease on background, border-color, and color for interactive elements |
@@ -489,6 +571,10 @@ The CSS was restructured for the three-panel layout.
 | **Static JSON data files** | Both `region_metadata.json` and `eeg_data.json` are served as static files from `public/data/`. No running backend server is needed — the data is pre-computed when the pipeline runs. Files are small enough to browser-cache. |
 | **No build-time static generation** | The page is `'use client'` because the Three.js scene requires browser APIs (`WebGLRenderer`, `requestAnimationFrame`). |
 | **Info popups instead of dedicated panel** | Small `?` icons next to section headers open inline explanation text. This keeps the UI compact without needing a separate help panel or modal system. |
+| **Run-level aggregation via `useMemo`** | The `activeData` memo recomputes whenever `selectedRuns` or `eegData` changes, filtering trial data before it reaches child components. This keeps the per-run selection logic in one place rather than spreading it across every consumer. |
+| **Canvas-based timeline rendering** | `TimelineCurves` and `TimelineHeatmap` use `<canvas>` instead of SVG or DOM elements. Canvas handles the 22 channels × 90 time bins × multiple classes more efficiently than creating thousands of DOM nodes. |
+| **Fixed channel ordering in heatmap** | The `CHANNEL_ORDER` array ensures a consistent front-to-back spatial layout regardless of the order channels appear in the JSON. Group breaks add visual structure matching the electrode montage topology. |
+| **Zoom via `visibleRange`** | Instead of re-sampling data at different resolutions, the zoom simply narrows the index range that child components render. This is simpler and avoids data loss at high zoom. |
 
 ---
 
@@ -520,13 +606,19 @@ The data is stored in GDF format. Event types 769–772 mark the cue onsets for 
 
 #### `loader.py`
 
+The module also defines two constants: `CLASS_INFO` — a dict mapping class names (`'left_hand'`, `'right_hand'`, `'feet'`, `'tongue'`) to their GDF event codes (769–772), display labels, and colours; and `STANDARD_EEG_CHANNELS` — the ordered list of the 22 standard 10-20 channel names used by the dataset.
+
+##### `find_gdf_file(data_dir, subject, session)`
+
+Looks for a GDF file matching the pattern `{subject}{session}.gdf` in the given directory. Returns the path if found, `None` otherwise.
+
 ##### `load_gdf(filepath)`
 
 Loads a GDF file using `mne.io.read_raw_gdf` with `preload=True`. Returns the raw MNE object, the events array (extracted via `mne.events_from_annotations`), and the event_id mapping. MNE's GDF reader stores event types as string annotations (e.g. `'769'`), so the event_id dict maps these strings to MNE's internal integer codes.
 
 ##### `setup_channels(raw)`
 
-Sets proper channel types on the raw object. The GDF files have 25 channels — the first 22 are EEG, the last 3 are EOG. Channel names may have `'EEG-'` or `'EOG-'` prefixes from the GDF header which are stripped. The EOG channels are marked with `raw.set_channel_types` so that MNE's artifact removal tools can identify them.
+Sets proper channel types and names on the raw object. The GDF files have 25 channels — the first 22 are EEG, the last 3 are EOG. The function unconditionally renames the first 22 channels to the known standard 10-20 names from `STANDARD_EEG_CHANNELS` and the last 3 to `EOG-left`, `EOG-central`, `EOG-right`. This is robust against varying GDF naming conventions — some files have `'EEG-'`/`'EOG-'` prefixes, others store duplicate `'EEG'` labels that MNE numbers as `EEG-0`, `EEG-1`, etc. The EOG channels are marked with `raw.set_channel_types` so that MNE's artifact removal tools can identify them.
 
 ##### `extract_session_events(events, event_id, sfreq)`
 
@@ -562,18 +654,26 @@ Computes Event-Related Desynchronisation / Synchronisation (ERD/ERS) for a given
 2. Bandpass filter the epochs to the target band (e.g. 8–13 Hz for mu).
 3. Apply the Hilbert transform (`scipy.signal.hilbert`) to get the analytic signal, then take |analytic|² for instantaneous power.
 4. Computes per-trial power and per-trial baseline power over the baseline time window, rather than averaging across all trials initially.
-5. Compute baseline power as the mean over the baseline time window per trial.
+5. Compute baseline power as the mean over the baseline time window per trial. The baseline is clamped to `np.finfo(float).tiny` (~2.2e-308) to prevent division by zero without distorting near-zero baselines.
 6. Express ERD/ERS as percentage change: `(power − baseline) / baseline × 100` for each trial.
 
 Negative values indicate desynchronisation (ERD), which is the expected pattern during motor imagery — the sensorimotor rhythm is suppressed when the subject imagines movement. Positive values indicate synchronisation (ERS), sometimes seen as a post-movement rebound.
 
 Returns a dict mapping class names to per-trial `(n_trials, n_channels, n_times)` arrays and the corresponding time vector.
 
+##### `get_class_epoch_counts(epochs)`
+
+Returns a dict mapping class event IDs to the number of clean (non-dropped) epochs per class. Used to populate the `clean_counts` field in the exported JSON, which the frontend displays as "X/Y trials" in the class buttons.
+
 ##### `downsample_timecourse(data, times, n_bins)`
 
 Downsamples the ERD/ERS time courses to a fixed number of bins (default 90) for JSON export. Uses `np.linspace` to pick evenly spaced indices from the full-resolution data. It robustly supports trailing dimensions when slicing time points, ensuring it can gracefully handle the new per-trial `(n_trials, n_channels, n_times)` array shapes alongside averages. At 250 Hz with a 4.5 s epoch, the raw data has 1125 time points — downsampling to 90 bins (one every ~50 ms) keeps the JSON small (~128 KB total) while preserving the temporal structure.
 
 #### `export.py`
+
+##### `build_channel_regions(electrode_mappings)`
+
+Converts the electrode pipeline output (list of electrode mapping dicts) into a `channel_regions` dict that maps each channel name to its Destrieux region ID and name. This is the bridge between the electrode pipeline (step 5) and the EEG pipeline (step 6).
 
 ##### `build_eeg_json(dataset_info, session_events, erd_ers_data, channel_regions)`
 
@@ -608,13 +708,17 @@ Writes the JSON to disk and reports the file size.
 
 ##### `run_eeg_pipeline(config, electrode_mappings)`
 
-Top-level function called by `main.py`. The flow is:
+Top-level function called by `main.py`. Delegates to `_process_gdf` for real data or `generate_synthetic_data` for demo data. The flow is:
 
 1. Build the `channel_regions` dict from the electrode pipeline output.
 2. Look for a GDF file at `{eeg_data_dir}/{eeg_subject}{eeg_session}.gdf`.
 3. If found: load → preprocess → epoch → compute ERD/ERS for mu and beta bands → downsample → build JSON.
 4. If not found: generate synthetic demo data.
 5. Export to `frontend/public/data/eeg_data.json`.
+
+##### `_process_gdf(config, gdf_path, channel_regions)`
+
+Internal helper that handles the real-data path: loads the GDF file, runs preprocessing (EOG removal → channel picking → CAR → bandpass), creates epochs, computes ERD/ERS for both mu and beta bands, downsamples, and assembles the JSON structure. Separated from `run_eeg_pipeline` to keep the orchestrator readable.
 
 The `electrode_mappings` parameter comes from step 5 of the main pipeline (electrode mapping). It provides the channel → brain region association that the frontend needs to map per-channel ERD/ERS values onto the 3D brain mesh.
 
