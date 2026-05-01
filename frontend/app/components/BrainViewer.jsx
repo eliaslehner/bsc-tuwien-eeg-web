@@ -8,6 +8,7 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { SSAOPass } from 'three/examples/jsm/postprocessing/SSAOPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { activeChannelsFor } from '../lib/eeg';
 
 /**
  * Compute per-vertex heatmap colours from ERD/ERS data.
@@ -17,7 +18,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
  * blue (ERD) - grey - red (ERS) colour scale.
  */
 function computeHeatmapColors(
-    vertexRegionIds, eegData, selectedClasses, selectedBand, timeIndex, contrastMode, contrastOrder, erdThreshold
+    vertexRegionIds, eegData, selectedClasses, selectedBand, timeIndex, contrastMode, contrastOrder, erdThreshold, channelMode
 ) {
     const bandData = eegData?.erd_ers?.[selectedBand];
     if (!bandData || !vertexRegionIds?.length) return null;
@@ -27,9 +28,12 @@ function computeHeatmapColors(
     const activeClasses = [...selectedClasses].filter((c) => bandData[c]);
     if (activeClasses.length === 0) return null;
 
+    const activeChannelSet = new Set(activeChannelsFor(channelMode || 'all', channels));
+
     // Per-channel value computation
     const channelValues = {};
     for (let i = 0; i < channels.length; i++) {
+        if (!activeChannelSet.has(channels[i])) continue;
         if (contrastMode && activeClasses.length === 2) {
             const c1 = contrastOrder?.[0] || activeClasses[0];
             const c2 = contrastOrder?.[1] || activeClasses[1];
@@ -122,6 +126,7 @@ export default function BrainViewer({
     contrastOrder,
     erdThreshold,
     multiView,
+    channelMode,
 }) {
     const containerRef = useRef(null);
     const tooltipRef = useRef(null);
@@ -132,6 +137,7 @@ export default function BrainViewer({
     const origColorsRef = useRef(null);
     const materialRef = useRef(null);
     const heatmapValuesRef = useRef({});
+    const controlsRef = useRef(null);
     const configRef = useRef({ multiView });
 
     useEffect(() => {
@@ -172,7 +178,8 @@ export default function BrainViewer({
             currentTimeIndex,
             contrastMode,
             contrastOrder,
-            erdThreshold
+            erdThreshold,
+            channelMode
         );
 
         if (result) {
@@ -189,7 +196,7 @@ export default function BrainViewer({
             heatmapValuesRef.current = {};
         }
         colorAttr.needsUpdate = true;
-    }, [heatmapEnabled, eegData, selectedClasses, selectedBand, currentTimeIndex, contrastMode, contrastOrder, erdThreshold]);
+    }, [loading, heatmapEnabled, eegData, selectedClasses, selectedBand, currentTimeIndex, contrastMode, contrastOrder, erdThreshold, channelMode]);
 
     // ---- Three.js setup (once) ----
     useEffect(() => {
@@ -230,6 +237,7 @@ export default function BrainViewer({
         controls.enableDamping = true;
         controls.dampingFactor = 0.08;
         controls.rotateSpeed = 0.8;
+        controlsRef.current = controls;
 
         // --- Raycasting ---
         const raycaster = new THREE.Raycaster();
@@ -267,12 +275,25 @@ export default function BrainViewer({
             });
 
         // --- Multi-View Cameras ---
-        const leftCamera = new THREE.PerspectiveCamera(50, 1, 0.1, 5000);
-        const topCamera = new THREE.PerspectiveCamera(50, 1, 0.1, 5000);
-        const rightCamera = new THREE.PerspectiveCamera(50, 1, 0.1, 5000);
-        
+        const MULTI_FOV = 50;
+        const MULTI_MARGIN = 1.12;
+        const leftCamera = new THREE.PerspectiveCamera(MULTI_FOV, 1, 0.1, 5000);
+        const topCamera = new THREE.PerspectiveCamera(MULTI_FOV, 1, 0.1, 5000);
+        const rightCamera = new THREE.PerspectiveCamera(MULTI_FOV, 1, 0.1, 5000);
+
         let centerPoint = new THREE.Vector3();
         let maxDimVal = 100;
+        let brainSize = { x: 100, y: 100, z: 100 };
+        let multiViewReady = false;
+
+        // Distance at which a brain of given (height, width) fits inside a
+        // perspective camera's view given its FOV and the pane's aspect ratio.
+        const tanHalfFov = Math.tan(THREE.MathUtils.degToRad(MULTI_FOV) / 2);
+        const fitDistance = (worldHeight, worldWidth, aspect) => {
+            const dH = (worldHeight / 2) / tanHalfFov;
+            const dW = (worldWidth / 2) / (aspect * tanHalfFov);
+            return Math.max(dH, dW) * MULTI_MARGIN;
+        };
 
         // --- Load brain mesh PLY ---
         const loader = new PLYLoader();
@@ -312,22 +333,18 @@ export default function BrainViewer({
             );
             controls.target.copy(centre);
             controls.update();
+            controls.saveState();
 
-            // Set up multi-view cameras
-            // Left hemisphere: camera on the left side (-X) looking right
-            leftCamera.position.set(centre.x - maxDim * 1.5, centre.y, centre.z);
+            // Mesh axis convention (empirically determined): -X anterior,
+            // +X posterior, +Y superior, ±Z lateral (left/right ear).
+            // Left/right Z signs are chosen to match typical viewer convention;
+            // verify against C3 (left motor) visibility and swap if reversed.
+            // Multi-view positions are recomputed per frame to fit each pane's aspect.
+            brainSize = { x: size.x, y: size.y, z: size.z };
             leftCamera.up.set(0, 1, 0);
-            leftCamera.lookAt(centre);
-
-            // Right hemisphere: camera on the right side (+X) looking left
-            rightCamera.position.set(centre.x + maxDim * 1.5, centre.y, centre.z);
             rightCamera.up.set(0, 1, 0);
-            rightCamera.lookAt(centre);
-
-            // Top view: camera above (+Y) looking down
-            topCamera.position.set(centre.x, centre.y + maxDim * 1.5, centre.z);
-            topCamera.up.set(0, 0, -1);
-            topCamera.lookAt(centre);
+            topCamera.up.set(-1, 0, 0);
+            multiViewReady = true;
 
             setLoading(false);
         });
@@ -388,36 +405,55 @@ export default function BrainViewer({
             frameId = requestAnimationFrame(animate);
             controls.update();
             
-            if (configRef.current.multiView) {
-                // Split-screen render (Left, Top, Right)
+            if (configRef.current.multiView && multiViewReady) {
+                // Split-screen render (Left, Top, Right). Each pane's camera
+                // distance is fit to the brain bbox using that pane's aspect,
+                // so the brain never clips regardless of window width.
                 const w = container.clientWidth;
                 const h = container.clientHeight;
                 const w3 = Math.floor(w / 3);
-                
+                const wRight = w - w3 * 2;
+
                 renderer.setScissorTest(true);
-                
-                // Left Hemisphere (Left Camera)
+
+                // Left Hemisphere — looks along -Z; X is screen-horizontal, Y vertical
+                const aspectL = w3 / h;
+                const distL = fitDistance(brainSize.y, brainSize.x, aspectL);
+                leftCamera.position.set(centerPoint.x, centerPoint.y, centerPoint.z + distL);
+                leftCamera.lookAt(centerPoint);
+                leftCamera.aspect = aspectL;
+                leftCamera.updateProjectionMatrix();
                 renderer.setViewport(0, 0, w3, h);
                 renderer.setScissor(0, 0, w3, h);
-                leftCamera.aspect = w3 / h;
-                leftCamera.updateProjectionMatrix();
                 renderer.render(scene, leftCamera);
-                
-                // Top View
+
+                // Top View — looks along -Y; X is screen-vertical (anterior up), Z horizontal
+                const aspectT = w3 / h;
+                const distT = fitDistance(brainSize.x, brainSize.z, aspectT);
+                topCamera.position.set(centerPoint.x, centerPoint.y + distT, centerPoint.z);
+                topCamera.lookAt(centerPoint);
+                topCamera.aspect = aspectT;
+                topCamera.updateProjectionMatrix();
                 renderer.setViewport(w3, 0, w3, h);
                 renderer.setScissor(w3, 0, w3, h);
-                topCamera.aspect = w3 / h;
-                topCamera.updateProjectionMatrix();
                 renderer.render(scene, topCamera);
-                
-                // Right Hemisphere
-                renderer.setViewport(w3 * 2, 0, w - w3 * 2, h);
-                renderer.setScissor(w3 * 2, 0, w - w3 * 2, h);
-                rightCamera.aspect = (w - w3 * 2) / h;
+
+                // Right Hemisphere — looks along +Z
+                const aspectR = wRight / h;
+                const distR = fitDistance(brainSize.y, brainSize.x, aspectR);
+                rightCamera.position.set(centerPoint.x, centerPoint.y, centerPoint.z - distR);
+                rightCamera.lookAt(centerPoint);
+                rightCamera.aspect = aspectR;
                 rightCamera.updateProjectionMatrix();
+                renderer.setViewport(w3 * 2, 0, wRight, h);
+                renderer.setScissor(w3 * 2, 0, wRight, h);
                 renderer.render(scene, rightCamera);
-                
+
                 renderer.setScissorTest(false);
+            } else if (configRef.current.multiView) {
+                // Multi-view requested but mesh not yet loaded — clear black
+                renderer.setViewport(0, 0, container.clientWidth, container.clientHeight);
+                renderer.clear();
             } else {
                 // Default SSAO Render
                 renderer.setViewport(0, 0, container.clientWidth, container.clientHeight);
@@ -430,16 +466,18 @@ export default function BrainViewer({
         const onResize = () => {
             const rw = container.clientWidth;
             const rh = container.clientHeight;
+            if (rw === 0 || rh === 0) return;
             camera.aspect = rw / rh;
             camera.updateProjectionMatrix();
             renderer.setSize(rw, rh);
             composer.setSize(rw, rh);
         };
-        window.addEventListener('resize', onResize);
+        const ro = new ResizeObserver(onResize);
+        ro.observe(container);
 
         // --- Cleanup ---
         return () => {
-            window.removeEventListener('resize', onResize);
+            ro.disconnect();
             container.removeEventListener('mousemove', onMouseMove);
             cancelAnimationFrame(frameId);
             composer.dispose();
@@ -458,6 +496,26 @@ export default function BrainViewer({
                         <div className="spinner" />
                         <p>Loading brain model...</p>
                     </div>
+                )}
+                {!loading && multiView && (
+                    <div className="multi-view-labels">
+                        <span className="multi-view-label">Left</span>
+                        <span className="multi-view-label">Top</span>
+                        <span className="multi-view-label">Right</span>
+                    </div>
+                )}
+                {!loading && !multiView && (
+                    <button
+                        className="brain-reset-btn"
+                        onClick={() => controlsRef.current?.reset()}
+                        title="Reset view"
+                        aria-label="Reset view"
+                    >
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                            <path d="M2 7a5 5 0 1 0 1.5-3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                            <path d="M2 2v3h3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                    </button>
                 )}
                 {heatmapEnabled && !loading && (
                     <div className="brain-legend">

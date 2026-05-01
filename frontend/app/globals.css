@@ -1102,3 +1102,67 @@ body {
     border: none;
 }
 
+/* === Multi-view labels === */
+.multi-view-labels {
+    position: absolute;
+    top: 12px;
+    left: 0;
+    right: 0;
+    display: flex;
+    pointer-events: none;
+    z-index: 5;
+}
+
+.multi-view-label {
+    flex: 1;
+    text-align: center;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #6ee7b7;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+/* === Reset view button === */
+.brain-reset-btn {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.6);
+    border: 1px solid #333;
+    border-radius: 6px;
+    color: #aaa;
+    cursor: pointer;
+    backdrop-filter: blur(6px);
+    transition: color 0.15s, border-color 0.15s, background 0.15s;
+    z-index: 5;
+}
+
+.brain-reset-btn:hover {
+    color: #6ee7b7;
+    border-color: #6ee7b7;
+    background: rgba(0, 0, 0, 0.75);
+}
+
+/* === Responsive (desktop) === */
+.app {
+    min-width: 800px;
+}
+
+@media (max-width: 1280px) {
+    .dataset-panel {
+        width: 260px;
+    }
+
+    .timeline {
+        height: 240px;
+    }
+}
+
+

@@ -21,6 +21,7 @@ export default function Home() {
     const [contrastOrder, setContrastOrder] = useState([null, null]);
     const [erdThreshold, setErdThreshold] = useState(0);
     const [multiView, setMultiView] = useState(false);
+    const [channelMode, setChannelMode] = useState('motor');
 
     useEffect(() => {
         fetch('/data/eeg_data.json')
@@ -167,6 +168,7 @@ export default function Home() {
                     contrastOrder={contrastOrder}
                     erdThreshold={erdThreshold}
                     multiView={multiView}
+                    channelMode={channelMode}
                 />
             </div>
 
@@ -180,6 +182,8 @@ export default function Home() {
                 onPlayToggle={handlePlayToggle}
                 contrastMode={contrastMode}
                 contrastOrder={contrastOrder}
+                channelMode={channelMode}
+                setChannelMode={setChannelMode}
             />
             
             <dialog id="help-modal" className="help-modal" onClick={(e) => { if (e.target.id === 'help-modal') e.target.close(); }}>

@@ -1,8 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useCallback, useMemo, useState } from 'react';
-
-const MOTOR_CHANNELS = ['C3', 'Cz', 'C4'];
+import { MOTOR_CHANNELS } from '../lib/eeg';
 
 function niceStep(range, maxTicks) {
     if (range <= 0) return 1;

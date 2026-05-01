@@ -24,9 +24,10 @@ export default function Timeline({
     onPlayToggle,
     contrastMode,
     contrastOrder,
+    channelMode,
+    setChannelMode,
 }) {
     const [viewMode, setViewMode] = useState('curves');
-    const [channelMode, setChannelMode] = useState('motor');
     const [stacked, setStacked] = useState(true);
     const [speedIdx, setSpeedIdx] = useState(1);
     const [zoomLevel, setZoomLevel] = useState(0);
