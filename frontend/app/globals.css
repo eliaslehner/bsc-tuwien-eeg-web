@@ -362,6 +362,15 @@ body {
     color: #6ee7b7;
 }
 
+.heatmap-toggle:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.heatmap-toggle:disabled:hover {
+    background: #1a1a1a;
+}
+
 /* === Info Popup === */
 .info-popup-wrapper {
     position: relative;
@@ -965,8 +974,9 @@ body {
     display: block;
     font-size: 0.68rem;
     color: #555;
-    margin-top: 2px;
-    padding-left: 24px;
+    margin-top: 0.4rem;
+    padding-left: 0;
+    text-align: left;
 }
 
 /* Contrast order */
@@ -974,22 +984,23 @@ body {
     display: flex;
     align-items: center;
     gap: 6px;
-    margin-top: 6px;
-    padding: 5px 8px;
-    background: #1a1a1a;
-    border: 1px solid #2a2a2a;
+    margin-top: 0.5rem;
+    padding: 0.5rem 0.6rem;
+    background: #1a2420;
+    border: 1px solid #6ee7b750;
     border-radius: 6px;
-    font-size: 0.75rem;
+    font-size: 0.8rem;
 }
 
 .contrast-order-label {
-    color: #ccc;
+    color: #6ee7b7;
     font-weight: 500;
 }
 
 .contrast-order-minus {
-    color: #888;
-    font-size: 0.9rem;
+    color: #6ee7b7;
+    font-size: 0.95rem;
+    opacity: 0.75;
 }
 
 .contrast-swap-btn {
@@ -999,9 +1010,9 @@ body {
     width: 22px;
     height: 22px;
     border-radius: 4px;
-    border: 1px solid #333;
+    border: 1px solid #6ee7b750;
     background: transparent;
-    color: #888;
+    color: #6ee7b7;
     cursor: pointer;
     margin-left: auto;
     transition: all 0.12s;
@@ -1009,19 +1020,19 @@ body {
 
 .contrast-swap-btn:hover {
     border-color: #6ee7b7;
-    color: #6ee7b7;
-    background: rgba(110, 231, 183, 0.08);
+    background: rgba(110, 231, 183, 0.12);
 }
 
 /* === Run Selector === */
 .run-selector {
     display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
+    gap: 0.35rem;
 }
 
 .run-btn {
-    padding: 0.35rem 0.65rem;
+    flex: 1;
+    min-width: 0;
+    padding: 0.35rem 0.5rem;
     font-size: 0.75rem;
     font-family: inherit;
     font-weight: 500;
@@ -1031,7 +1042,6 @@ body {
     color: #777;
     cursor: pointer;
     transition: all 0.15s;
-    min-width: 38px;
     text-align: center;
 }
 
@@ -1100,6 +1110,50 @@ body {
     border-radius: 50%;
     background: #6ee7b7;
     border: none;
+}
+
+/* === ERD Threshold Slider Section === */
+.threshold-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.threshold-row .analysis-slider {
+    flex: 1;
+}
+
+.threshold-bound {
+    font-size: 0.7rem;
+    color: #666;
+    font-family: 'Consolas', 'Fira Code', monospace;
+    flex-shrink: 0;
+}
+
+.threshold-value {
+    width: 100%;
+    padding: 0.4rem 0.6rem;
+    background: #1a1a1a;
+    border: 1px solid #2a2a2a;
+    border-radius: 6px;
+    color: #ddd;
+    font-size: 0.8rem;
+    font-family: inherit;
+    text-align: center;
+    box-sizing: border-box;
+    -moz-appearance: textfield;
+}
+
+.threshold-value::-webkit-outer-spin-button,
+.threshold-value::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.threshold-value:focus {
+    outline: none;
+    border-color: #6ee7b750;
 }
 
 /* === Multi-view labels === */
