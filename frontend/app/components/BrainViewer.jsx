@@ -276,23 +276,27 @@ export default function BrainViewer({
 
         // --- Multi-View Cameras ---
         const MULTI_FOV = 50;
-        const MULTI_MARGIN = 1.12;
+        const MULTI_MARGIN = 1.18;
         const leftCamera = new THREE.PerspectiveCamera(MULTI_FOV, 1, 0.1, 5000);
         const topCamera = new THREE.PerspectiveCamera(MULTI_FOV, 1, 0.1, 5000);
         const rightCamera = new THREE.PerspectiveCamera(MULTI_FOV, 1, 0.1, 5000);
 
         let centerPoint = new THREE.Vector3();
         let maxDimVal = 100;
-        let brainSize = { x: 100, y: 100, z: 100 };
+        let brainRadius = 100;
         let multiViewReady = false;
 
-        // Distance at which a brain of given (height, width) fits inside a
-        // perspective camera's view given its FOV and the pane's aspect ratio.
-        const tanHalfFov = Math.tan(THREE.MathUtils.degToRad(MULTI_FOV) / 2);
-        const fitDistance = (worldHeight, worldWidth, aspect) => {
-            const dH = (worldHeight / 2) / tanHalfFov;
-            const dW = (worldWidth / 2) / (aspect * tanHalfFov);
-            return Math.max(dH, dW) * MULTI_MARGIN;
+        // Distance at which a sphere of `brainRadius` fits inside a perspective
+        // camera with `MULTI_FOV` vertical FOV and the pane's aspect ratio.
+        // Sphere-based fit is orientation-independent: the sphere's silhouette is
+        // a circle of radius R from any direction, so its angular radius is
+        // arcsin(R/d). For the sphere to fit, arcsin(R/d) <= half-FOV in the
+        // tighter axis (whichever of vertical/horizontal is narrower).
+        const halfFovV = THREE.MathUtils.degToRad(MULTI_FOV) / 2;
+        const fitDistance = (aspect) => {
+            const halfFovH = Math.atan(aspect * Math.tan(halfFovV));
+            const tighter = Math.min(halfFovV, halfFovH);
+            return (brainRadius / Math.sin(tighter)) * MULTI_MARGIN;
         };
 
         // --- Load brain mesh PLY ---
@@ -340,7 +344,9 @@ export default function BrainViewer({
             // Left/right Z signs are chosen to match typical viewer convention;
             // verify against C3 (left motor) visibility and swap if reversed.
             // Multi-view positions are recomputed per frame to fit each pane's aspect.
-            brainSize = { x: size.x, y: size.y, z: size.z };
+            geometry.computeBoundingSphere();
+            brainRadius = geometry.boundingSphere?.radius
+                ?? Math.sqrt(size.x * size.x + size.y * size.y + size.z * size.z) / 2;
             leftCamera.up.set(0, 1, 0);
             rightCamera.up.set(0, 1, 0);
             topCamera.up.set(-1, 0, 0);
@@ -416,9 +422,9 @@ export default function BrainViewer({
 
                 renderer.setScissorTest(true);
 
-                // Left Hemisphere — looks along -Z; X is screen-horizontal, Y vertical
+                // Left Hemisphere — view dir -Z
                 const aspectL = w3 / h;
-                const distL = fitDistance(brainSize.y, brainSize.x, aspectL);
+                const distL = fitDistance(aspectL);
                 leftCamera.position.set(centerPoint.x, centerPoint.y, centerPoint.z + distL);
                 leftCamera.lookAt(centerPoint);
                 leftCamera.aspect = aspectL;
@@ -427,9 +433,9 @@ export default function BrainViewer({
                 renderer.setScissor(0, 0, w3, h);
                 renderer.render(scene, leftCamera);
 
-                // Top View — looks along -Y; X is screen-vertical (anterior up), Z horizontal
+                // Top View — view dir -Y, anterior at top of screen via up=(-1,0,0)
                 const aspectT = w3 / h;
-                const distT = fitDistance(brainSize.x, brainSize.z, aspectT);
+                const distT = fitDistance(aspectT);
                 topCamera.position.set(centerPoint.x, centerPoint.y + distT, centerPoint.z);
                 topCamera.lookAt(centerPoint);
                 topCamera.aspect = aspectT;
@@ -438,9 +444,9 @@ export default function BrainViewer({
                 renderer.setScissor(w3, 0, w3, h);
                 renderer.render(scene, topCamera);
 
-                // Right Hemisphere — looks along +Z
+                // Right Hemisphere — view dir +Z
                 const aspectR = wRight / h;
-                const distR = fitDistance(brainSize.y, brainSize.x, aspectR);
+                const distR = fitDistance(aspectR);
                 rightCamera.position.set(centerPoint.x, centerPoint.y, centerPoint.z - distR);
                 rightCamera.lookAt(centerPoint);
                 rightCamera.aspect = aspectR;
