@@ -100,6 +100,14 @@ export default function Timeline({
         return () => el.removeEventListener('wheel', handleWheel);
     }, [handleWheel]);
 
+    // Mirror the active canvas's plot paddings so the slider thumb-center
+    // aligns with the playhead line. Subtract 6px (half thumb width) per side.
+    const plotPad = viewMode === 'heatmap'
+        ? { left: 44, right: 52 }
+        : stacked
+            ? { left: 80, right: 16 }
+            : { left: 50, right: 16 };
+
     if (!eegData) {
         return (
             <div className="timeline">
@@ -261,8 +269,13 @@ export default function Timeline({
             </div>
 
             <div className="tl-slider-row">
-                <span className="tl-slider-label">{tmin.toFixed(1)}s</span>
-                <div className="tl-slider-wrap">
+                <div
+                    className="tl-slider-wrap"
+                    style={{
+                        paddingLeft: `${plotPad.left - 6}px`,
+                        paddingRight: `${plotPad.right - 6}px`,
+                    }}
+                >
                     <input
                         type="range"
                         className="tl-slider"
@@ -272,7 +285,6 @@ export default function Timeline({
                         onChange={(e) => onTimeChange(Number(e.target.value))}
                     />
                 </div>
-                <span className="tl-slider-label">{tmax.toFixed(1)}s</span>
             </div>
         </div>
     );

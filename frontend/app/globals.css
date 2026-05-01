@@ -748,24 +748,13 @@ body {
 
 /* Epoch slider row */
 .tl-slider-row {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.25rem 0.75rem;
+    padding: 0.25rem 0;
     border-top: 1px solid #1a1a1a;
     flex-shrink: 0;
 }
 
-.tl-slider-label {
-    font-size: 0.65rem;
-    color: #555;
-    font-family: 'Consolas', monospace;
-    min-width: 32px;
-    text-align: center;
-}
-
 .tl-slider-wrap {
-    flex: 1;
+    width: 100%;
 }
 
 .tl-slider {

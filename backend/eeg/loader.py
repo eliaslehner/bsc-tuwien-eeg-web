@@ -9,10 +9,10 @@ import numpy as np
 
 # Motor imagery class definitions from the dataset documentation
 CLASS_INFO = {
-    'left_hand':  {'event_code': 769, 'label': 'Left Hand',  'color': '#e74c3c'},
-    'right_hand': {'event_code': 770, 'label': 'Right Hand', 'color': '#3498db'},
+    'left_hand':  {'event_code': 769, 'label': 'Left Hand',  'color': '#FF16F9'},
+    'right_hand': {'event_code': 770, 'label': 'Right Hand', 'color': '#f1c40f'},
     'feet':       {'event_code': 771, 'label': 'Feet',       'color': '#2ecc71'},
-    'tongue':     {'event_code': 772, 'label': 'Tongue',     'color': '#9b59b6'},
+    'tongue':     {'event_code': 772, 'label': 'Tongue',     'color': '#706EFB'},
 }
 
 # Standard 22-channel EEG names for BCI Competition IV 2a
