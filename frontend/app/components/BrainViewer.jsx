@@ -422,10 +422,31 @@ export default function BrainViewer({
             if (!brainMesh || !meta || !meta.vertexRegionIds.length) return;
 
             const rect = container.getBoundingClientRect();
-            mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-            mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+            const localX = e.clientX - rect.left;
+            const localY = e.clientY - rect.top;
+            let rayCamera = camera;
 
-            raycaster.setFromCamera(mouse, camera);
+            if (configRef.current.multiView && multiViewReady) {
+                const paneW = Math.floor(rect.width / 3);
+                const panes = [
+                    { left: 0, width: paneW, camera: leftCamera },
+                    { left: paneW, width: paneW, camera: topCamera },
+                    { left: paneW * 2, width: rect.width - paneW * 2, camera: rightCamera },
+                ];
+                const pane = panes.find(
+                    (p) => localX >= p.left && localX <= p.left + p.width,
+                );
+                if (!pane || pane.width <= 0 || rect.height <= 0) return;
+
+                mouse.x = ((localX - pane.left) / pane.width) * 2 - 1;
+                mouse.y = -(localY / rect.height) * 2 + 1;
+                rayCamera = pane.camera;
+            } else {
+                mouse.x = (localX / rect.width) * 2 - 1;
+                mouse.y = -(localY / rect.height) * 2 + 1;
+            }
+
+            raycaster.setFromCamera(mouse, rayCamera);
             const intersects = raycaster.intersectObject(brainMesh);
 
             const tooltip = tooltipRef.current;
