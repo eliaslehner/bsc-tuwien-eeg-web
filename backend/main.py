@@ -5,6 +5,7 @@ Run with:  python -m backend.main
 """
 
 import open3d as o3d
+import numpy as np
 
 from backend.config import Config
 from backend.model.loader import load_nii_image, load_masked_volume
@@ -33,9 +34,16 @@ def run(config=None):
     # ── Step 1: Load NIfTI volumes ──
     print("\n[1/6] Loading NIfTI volumes")
     brain_nii = load_nii_image(config.brain_nii_path)
-    _, masked_volume, brain_mask = load_masked_volume(
+    t1w_nii, masked_volume, brain_mask = load_masked_volume(
         config.brain_t1w_nii_path, config.brain_mask_nii_path,
     )
+    if brain_nii.shape != masked_volume.shape:
+        raise ValueError(
+            f"Brain image shape {brain_nii.shape} does not match "
+            f"masked T1w shape {masked_volume.shape}"
+        )
+    if not np.allclose(brain_nii.affine, t1w_nii.affine):
+        raise ValueError("Brain image affine does not match full T1w affine")
 
     # ── Step 2: Destrieux atlas + gap-fill ──
     print("\n[2/6] Loading Destrieux atlas & gap-filling")
