@@ -399,8 +399,8 @@ export default function BrainViewer({
             controls.saveState();
 
             // Mesh axis convention: -X anterior, +X posterior, +Y superior,
-            // -Z anatomical left, +Z anatomical right. Verified against the
-            // L/R atlas labels and C3/C4 motor-region mappings.
+            // ±Z lateral. Side-view labels are validated visually against
+            // the C3/C4 motor-region response.
             // Multi-view positions are recomputed per frame to fit each pane's aspect.
             geometry.computeBoundingSphere();
             brainRadius = geometry.boundingSphere?.radius
@@ -501,10 +501,10 @@ export default function BrainViewer({
 
                 renderer.setScissorTest(true);
 
-                // Left Hemisphere — camera on -Z side, view dir +Z
+                // Left Hemisphere
                 const aspectL = w3 / h;
                 const distL = fitDistance(aspectL);
-                leftCamera.position.set(centerPoint.x, centerPoint.y, centerPoint.z - distL);
+                leftCamera.position.set(centerPoint.x, centerPoint.y, centerPoint.z + distL);
                 leftCamera.lookAt(centerPoint);
                 leftCamera.aspect = aspectL;
                 leftCamera.updateProjectionMatrix();
@@ -523,10 +523,10 @@ export default function BrainViewer({
                 renderer.setScissor(w3, 0, w3, h);
                 renderer.render(scene, topCamera);
 
-                // Right Hemisphere — camera on +Z side, view dir -Z
+                // Right Hemisphere
                 const aspectR = wRight / h;
                 const distR = fitDistance(aspectR);
-                rightCamera.position.set(centerPoint.x, centerPoint.y, centerPoint.z + distR);
+                rightCamera.position.set(centerPoint.x, centerPoint.y, centerPoint.z - distR);
                 rightCamera.lookAt(centerPoint);
                 rightCamera.aspect = aspectR;
                 rightCamera.updateProjectionMatrix();
