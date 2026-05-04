@@ -181,19 +181,21 @@ export default function TimelineCurves({
                 ctx.stroke();
                 ctx.setLineDash([]);
 
-                // Fill under curve
-                ctx.globalAlpha = 0.08;
-                ctx.fillStyle = cls.color;
-                ctx.beginPath();
-                for (let i = vStart; i <= vEnd; i++) {
-                    const x = xFor(times[i]), y = yFor(curve[i]);
-                    i === vStart ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+                // Fill under averaged curves
+                if (!curve.individual) {
+                    ctx.globalAlpha = 0.08;
+                    ctx.fillStyle = cls.color;
+                    ctx.beginPath();
+                    for (let i = vStart; i <= vEnd; i++) {
+                        const x = xFor(times[i]), y = yFor(curve[i]);
+                        i === vStart ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+                    }
+                    ctx.lineTo(xFor(times[vEnd]), yFor(0));
+                    ctx.lineTo(xFor(times[vStart]), yFor(0));
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.globalAlpha = 1;
                 }
-                ctx.lineTo(xFor(times[vEnd]), yFor(0));
-                ctx.lineTo(xFor(times[vStart]), yFor(0));
-                ctx.closePath();
-                ctx.fill();
-                ctx.globalAlpha = 1;
 
                 // Curve line(s)
                 if (curve.individual) {
