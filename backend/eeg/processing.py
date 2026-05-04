@@ -9,7 +9,7 @@ import numpy as np
 import mne
 from scipy.signal import hilbert
 
-from .loader import CLASS_INFO
+from .loader import CLASS_INFO, class_for_annotation_key, find_event_code
 
 
 def remove_eog_artifacts(raw, eeg_channels, eog_channels):
@@ -54,10 +54,11 @@ def create_epochs(raw, events, event_id, tmin=-0.5, tmax=4.0):
     """
     mi_event_id = {}
     for key, val in event_id.items():
-        if key in ('769', '770', '771', '772'):
+        if class_for_annotation_key(key):
             mi_event_id[key] = val
 
     if not mi_event_id:
+        print(f"    No motor imagery annotations found. Available keys: {list(event_id.keys())}")
         return None
 
     epochs = mne.Epochs(
@@ -67,7 +68,7 @@ def create_epochs(raw, events, event_id, tmin=-0.5, tmax=4.0):
     )
 
     # Drop artifact-marked trials (event type 1023)
-    reject_code = event_id.get('1023')
+    reject_code = find_event_code(event_id, 1023)
     if reject_code is not None:
         reject_samples = {int(e[0]) for e in events if int(e[2]) == reject_code}
         if reject_samples:
@@ -97,11 +98,10 @@ def compute_band_erd_ers(epochs, baseline_tmin, baseline_tmax):
     times = epochs.times
     bl_mask = (times >= baseline_tmin) & (times < baseline_tmax)
 
-    gdf_to_class = {str(info['event_code']): cn for cn, info in CLASS_INFO.items()}
     erd_ers = {}
 
     for gdf_key in epochs.event_id:
-        class_name = gdf_to_class.get(gdf_key)
+        class_name = class_for_annotation_key(gdf_key)
         if not class_name:
             continue
 
@@ -133,10 +133,9 @@ def downsample_timecourse(data, times, n_bins):
 
 def get_class_epoch_counts(epochs):
     """Get per-class trial counts from epochs (after artifact rejection)."""
-    gdf_to_class = {str(info['event_code']): cn for cn, info in CLASS_INFO.items()}
     counts = {}
     for key in epochs.event_id:
-        cn = gdf_to_class.get(key)
+        cn = class_for_annotation_key(key)
         if cn:
             counts[cn] = len(epochs[key])
     return counts
@@ -144,12 +143,11 @@ def get_class_epoch_counts(epochs):
 
 def get_class_epoch_run_ids(epochs, events, event_id):
     """Get per-class run IDs aligned with retained epochs."""
-    run_start_code = event_id.get('32766')
+    run_start_code = find_event_code(event_id, 32766)
     if run_start_code is None:
         return {}
 
     id_to_key = {int(v): k for k, v in event_id.items()}
-    gdf_to_class = {str(info['event_code']): cn for cn, info in CLASS_INFO.items()}
 
     sample_to_run = {}
     current_run = -1
@@ -160,7 +158,7 @@ def get_class_epoch_run_ids(epochs, events, event_id):
             current_run += 1
             continue
 
-        class_name = gdf_to_class.get(id_to_key.get(mne_code, ''))
+        class_name = class_for_annotation_key(id_to_key.get(mne_code, ''))
         if class_name:
             sample_to_run[sample] = max(current_run, 0)
 
@@ -168,7 +166,7 @@ def get_class_epoch_run_ids(epochs, events, event_id):
     for evt in epochs.events:
         sample = int(evt[0])
         gdf_key = id_to_key.get(int(evt[2]), '')
-        class_name = gdf_to_class.get(gdf_key)
+        class_name = class_for_annotation_key(gdf_key)
         if class_name:
             run_ids[class_name].append(int(sample_to_run.get(sample, 0)))
 

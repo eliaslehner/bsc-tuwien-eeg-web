@@ -3,6 +3,7 @@ backend/eeg/loader.py — Load BCI Competition IV 2a GDF files using MNE.
 """
 
 import os
+import re
 
 import mne
 import numpy as np
@@ -22,6 +23,27 @@ STANDARD_EEG_CHANNELS = [
     'CP3', 'CP1', 'CPz', 'CP2', 'CP4',
     'P1', 'Pz', 'P2', 'POz',
 ]
+
+
+def annotation_matches_code(key, code):
+    """Return True when an MNE annotation key contains the given numeric code."""
+    return str(code) in re.findall(r'\d+', str(key))
+
+
+def class_for_annotation_key(key):
+    """Map a possibly decorated GDF annotation key to a motor imagery class."""
+    for class_name, info in CLASS_INFO.items():
+        if annotation_matches_code(key, info['event_code']):
+            return class_name
+    return None
+
+
+def find_event_code(event_id, gdf_code):
+    """Find MNE's integer event code for a possibly decorated GDF annotation."""
+    for key, value in event_id.items():
+        if annotation_matches_code(key, gdf_code):
+            return value
+    return None
 
 
 def find_gdf_file(data_dir, subject, session):
@@ -94,13 +116,12 @@ def extract_session_events(events, event_id, sfreq):
     Extract motor imagery cue events with timestamps for the session timeline.
     """
     id_to_key = {v: k for k, v in event_id.items()}
-    gdf_to_class = {str(info['event_code']): cn for cn, info in CLASS_INFO.items()}
 
     cue_events = []
     for evt in events:
         mne_code = int(evt[2])
         gdf_key = id_to_key.get(mne_code, '')
-        class_name = gdf_to_class.get(gdf_key)
+        class_name = class_for_annotation_key(gdf_key)
         if class_name:
             sample = int(evt[0])
             cue_events.append({
@@ -115,12 +136,11 @@ def extract_session_events(events, event_id, sfreq):
 def get_trial_counts(events, event_id):
     """Count total trials per motor imagery class."""
     id_to_key = {v: k for k, v in event_id.items()}
-    gdf_to_class = {str(info['event_code']): cn for cn, info in CLASS_INFO.items()}
 
     counts = {cn: 0 for cn in CLASS_INFO}
     for evt in events:
         gdf_key = id_to_key.get(int(evt[2]), '')
-        cn = gdf_to_class.get(gdf_key)
+        cn = class_for_annotation_key(gdf_key)
         if cn:
             counts[cn] += 1
 
