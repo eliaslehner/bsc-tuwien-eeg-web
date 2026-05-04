@@ -135,8 +135,7 @@ def generate_and_export(config, masked_volume, atlas_volume, id_to_palette_idx, 
     mesh.triangles = o3d.utility.Vector3iVector(faces_flipped)
     mesh.vertex_colors = o3d.utility.Vector3dVector(colors)
 
-    # Ensure consistent outward-facing winding so FrontSide culling works
-    mesh.orient_triangles()
+    # Recompute normals after the manual winding flip and coordinate transform.
     mesh.compute_vertex_normals()
 
     # ── Export ──
