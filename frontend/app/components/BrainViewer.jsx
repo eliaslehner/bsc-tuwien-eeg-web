@@ -357,6 +357,12 @@ export default function BrainViewer({
             const tighter = Math.min(halfFovV, halfFovH);
             return (brainRadius / Math.sin(tighter)) * MULTI_MARGIN;
         };
+        const mirrorProjectionX = (paneCamera) => {
+            paneCamera.projectionMatrix.elements[0] *= -1;
+            paneCamera.projectionMatrixInverse
+                .copy(paneCamera.projectionMatrix)
+                .invert();
+        };
 
         // --- Load brain mesh PLY ---
         const loader = new PLYLoader();
@@ -399,8 +405,12 @@ export default function BrainViewer({
             controls.saveState();
 
             // Mesh axis convention: -X anterior, +X posterior, +Y superior,
-            // ±Z lateral. Side-view labels are validated visually against
-            // the C3/C4 motor-region response.
+            // -Z anatomical left, +Z anatomical right. Verified empirically:
+            // C3 → "L G_precentral" sits on the -Z side, C4 → "R G_precentral"
+            // on the +Z side. All three multi-view panes mirror X in projection
+            // for neurological convention: top view shows anatomical left on
+            // screen-left, side views show anterior on the outer edge of each
+            // pane (screen-left for the left pane, screen-right for the right).
             // Multi-view positions are recomputed per frame to fit each pane's aspect.
             geometry.computeBoundingSphere();
             brainRadius = geometry.boundingSphere?.radius
@@ -501,35 +511,40 @@ export default function BrainViewer({
 
                 renderer.setScissorTest(true);
 
-                // Left Hemisphere
+                // Left Hemisphere — camera on -Z side (anatomical left).
+                // X is mirrored so anterior is on screen-left (neurological convention).
                 const aspectL = w3 / h;
                 const distL = fitDistance(aspectL);
-                leftCamera.position.set(centerPoint.x, centerPoint.y, centerPoint.z + distL);
+                leftCamera.position.set(centerPoint.x, centerPoint.y, centerPoint.z - distL);
                 leftCamera.lookAt(centerPoint);
                 leftCamera.aspect = aspectL;
                 leftCamera.updateProjectionMatrix();
+                mirrorProjectionX(leftCamera);
                 renderer.setViewport(0, 0, w3, h);
                 renderer.setScissor(0, 0, w3, h);
                 renderer.render(scene, leftCamera);
 
-                // Top View — view dir -Y, anterior at top of screen via up=(-1,0,0)
+                // Top View: view dir -Y, anterior at top, anatomical left on screen-left.
                 const aspectT = w3 / h;
                 const distT = fitDistance(aspectT);
                 topCamera.position.set(centerPoint.x, centerPoint.y + distT, centerPoint.z);
                 topCamera.lookAt(centerPoint);
                 topCamera.aspect = aspectT;
                 topCamera.updateProjectionMatrix();
+                mirrorProjectionX(topCamera);
                 renderer.setViewport(w3, 0, w3, h);
                 renderer.setScissor(w3, 0, w3, h);
                 renderer.render(scene, topCamera);
 
-                // Right Hemisphere
+                // Right Hemisphere — camera on +Z side (anatomical right).
+                // X is mirrored so anterior is on screen-right (neurological convention).
                 const aspectR = wRight / h;
                 const distR = fitDistance(aspectR);
-                rightCamera.position.set(centerPoint.x, centerPoint.y, centerPoint.z - distR);
+                rightCamera.position.set(centerPoint.x, centerPoint.y, centerPoint.z + distR);
                 rightCamera.lookAt(centerPoint);
                 rightCamera.aspect = aspectR;
                 rightCamera.updateProjectionMatrix();
+                mirrorProjectionX(rightCamera);
                 renderer.setViewport(w3 * 2, 0, wRight, h);
                 renderer.setScissor(w3 * 2, 0, wRight, h);
                 renderer.render(scene, rightCamera);
