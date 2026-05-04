@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader.js';
@@ -17,11 +17,11 @@ import { activeChannelsFor } from '../lib/eeg';
  * mapping, then colours each vertex by its region's value using a diverging
  * blue (ERD) - grey - red (ERS) colour scale.
  */
-function computeHeatmapColors(
-    vertexRegionIds, eegData, selectedClasses, selectedBand, timeIndex, contrastMode, contrastOrder, erdThreshold, channelMode
+function computeRegionAveragesAtTime(
+    eegData, selectedClasses, selectedBand, timeIndex, contrastMode, contrastOrder, channelMode,
 ) {
     const bandData = eegData?.erd_ers?.[selectedBand];
-    if (!bandData || !vertexRegionIds?.length) return null;
+    if (!bandData) return null;
 
     const channels = eegData.dataset.channels;
     const channelRegions = eegData.channel_regions;
@@ -70,9 +70,55 @@ function computeHeatmapColors(
         regionAvg[rid] = vals.reduce((a, b) => a + b, 0) / vals.length;
     }
 
-    const allVals = Object.values(regionAvg);
+    return regionAvg;
+}
+
+function computeHeatmapMaxAbs(
+    eegData, selectedClasses, selectedBand, contrastMode, contrastOrder, channelMode,
+) {
+    const bandData = eegData?.erd_ers?.[selectedBand];
+    const times = bandData?.times || [];
+    if (!bandData || times.length === 0) return 1;
+
+    let maxAbs = 1;
+    for (let timeIndex = 0; timeIndex < times.length; timeIndex++) {
+        const regionAvg = computeRegionAveragesAtTime(
+            eegData,
+            selectedClasses,
+            selectedBand,
+            timeIndex,
+            contrastMode,
+            contrastOrder,
+            channelMode,
+        );
+        if (!regionAvg) continue;
+
+        for (const value of Object.values(regionAvg)) {
+            maxAbs = Math.max(maxAbs, Math.abs(value));
+        }
+    }
+
+    return maxAbs;
+}
+
+function computeHeatmapColors(
+    vertexRegionIds, eegData, selectedClasses, selectedBand, timeIndex,
+    contrastMode, contrastOrder, erdThreshold, channelMode, maxAbs,
+) {
+    if (!vertexRegionIds?.length) return null;
+
+    const regionAvg = computeRegionAveragesAtTime(
+        eegData,
+        selectedClasses,
+        selectedBand,
+        timeIndex,
+        contrastMode,
+        contrastOrder,
+        channelMode,
+    );
+
+    const allVals = Object.values(regionAvg || {});
     if (allVals.length === 0) return null;
-    const maxAbs = Math.max(...allVals.map(Math.abs), 1);
 
     const n = vertexRegionIds.length;
     const colors = new Float32Array(n * 3);
@@ -144,6 +190,18 @@ export default function BrainViewer({
         configRef.current.multiView = multiView;
     }, [multiView]);
 
+    const heatmapMaxAbs = useMemo(
+        () => computeHeatmapMaxAbs(
+            eegData,
+            selectedClasses,
+            selectedBand,
+            contrastMode,
+            contrastOrder,
+            channelMode,
+        ),
+        [eegData, selectedClasses, selectedBand, contrastMode, contrastOrder, channelMode],
+    );
+
     // ---- Heatmap effect ----
     useEffect(() => {
         const mesh = meshRef.current;
@@ -179,7 +237,8 @@ export default function BrainViewer({
             contrastMode,
             contrastOrder,
             erdThreshold,
-            channelMode
+            channelMode,
+            heatmapMaxAbs,
         );
 
         if (result) {
@@ -196,7 +255,7 @@ export default function BrainViewer({
             heatmapValuesRef.current = {};
         }
         colorAttr.needsUpdate = true;
-    }, [loading, heatmapEnabled, eegData, selectedClasses, selectedBand, currentTimeIndex, contrastMode, contrastOrder, erdThreshold, channelMode]);
+    }, [loading, heatmapEnabled, eegData, selectedClasses, selectedBand, currentTimeIndex, contrastMode, contrastOrder, erdThreshold, channelMode, heatmapMaxAbs]);
 
     // ---- Three.js setup (once) ----
     useEffect(() => {
