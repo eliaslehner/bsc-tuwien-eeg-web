@@ -53,24 +53,32 @@ def _process_gdf(config, gdf_path, channel_regions):
     print("  Preprocessing (EOG removal, filtering)...")
     raw = preprocess_raw(raw, eeg_channels, eog_channels)
 
-    print("  Creating epochs...")
-    epochs = create_epochs(
+    print("  Creating broadband epochs for trial counts...")
+    broadband_epochs = create_epochs(
         raw, events, event_id,
         tmin=config.eeg_epoch_tmin, tmax=config.eeg_epoch_tmax,
     )
 
-    if epochs is None:
+    if broadband_epochs is None:
         print("  No epochs created, falling back to synthetic data")
         return generate_synthetic_data(config.eeg_channels, channel_regions)
 
-    clean_counts = get_class_epoch_counts(epochs)
+    clean_counts = get_class_epoch_counts(broadband_epochs)
     print(f"  Clean trials: {clean_counts}")
 
     erd_ers_data = {}
     for band_name, (lo, hi) in [('mu', config.eeg_mu_band), ('beta', config.eeg_beta_band)]:
         print(f"  Computing {band_name} ({lo}-{hi} Hz) ERD/ERS...")
+        band_raw = raw.copy().filter(lo, hi, verbose=False)
+        band_epochs = create_epochs(
+            band_raw, events, event_id,
+            tmin=config.eeg_epoch_tmin, tmax=config.eeg_epoch_tmax,
+        )
+        if band_epochs is None:
+            continue
+
         erd, times = compute_band_erd_ers(
-            epochs, lo, hi, config.eeg_baseline_tmin, config.eeg_baseline_tmax,
+            band_epochs, config.eeg_baseline_tmin, config.eeg_baseline_tmax,
         )
         ds_classes = {}
         ds_times = None

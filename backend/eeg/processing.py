@@ -84,9 +84,9 @@ def create_epochs(raw, events, event_id, tmin=-0.5, tmax=4.0):
     return epochs
 
 
-def compute_band_erd_ers(epochs, l_freq, h_freq, baseline_tmin, baseline_tmax):
+def compute_band_erd_ers(epochs, baseline_tmin, baseline_tmax):
     """
-    Compute ERD/ERS (%) for a frequency band via Hilbert transform.
+    Compute ERD/ERS (%) for already band-filtered epochs via Hilbert transform.
     Computes it per-trial.
 
     Returns
@@ -109,8 +109,7 @@ def compute_band_erd_ers(epochs, l_freq, h_freq, baseline_tmin, baseline_tmax):
         if len(class_ep) == 0:
             continue
 
-        filtered = class_ep.copy().filter(l_freq, h_freq, verbose=False)
-        data = filtered.get_data()  # (n_trials, n_channels, n_times)
+        data = class_ep.get_data()  # (n_trials, n_channels, n_times)
 
         power = np.abs(hilbert(data, axis=-1)) ** 2  # (n_trials, n_channels, n_times)
 
