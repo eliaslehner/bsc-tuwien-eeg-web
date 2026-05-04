@@ -336,6 +336,7 @@ Single-command entry point that runs the entire brain visualisation pipeline in 
 | **Single entry point** | `python -m backend.main` runs everything. No more remembering which script to run first. |
 | **Forward-pass of vertex IDs** | `generate_and_export` returns the per-vertex region IDs which are passed directly to `run_electrode_pipeline`, avoiding redundant computation. |
 | **Forward-pass of electrode mappings** | `run_electrode_pipeline` returns its output dict, and the `electrodes` list is passed to `run_eeg_pipeline` so the channel-to-region mapping doesn't need to be recomputed or read back from disk. |
+| **Batch pre-computation instead of a runtime server** | The proposal mentioned a lightweight Flask/FastAPI server with REST or WebSocket delivery. The implemented system deliberately replaces that with static JSON exports because the thesis use-case is deterministic replay of recorded sessions, not live streaming. Pre-computation makes scrubbing instant and avoids server round-trips during the demo. |
 
 ---
 
