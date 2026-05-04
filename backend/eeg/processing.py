@@ -149,7 +149,7 @@ def get_class_epoch_run_ids(epochs, events, event_id):
 
     id_to_key = {int(v): k for k, v in event_id.items()}
 
-    sample_to_run = {}
+    sample_to_raw_run = {}
     current_run = -1
     for evt in events:
         sample = int(evt[0])
@@ -160,14 +160,25 @@ def get_class_epoch_run_ids(epochs, events, event_id):
 
         class_name = class_for_annotation_key(id_to_key.get(mne_code, ''))
         if class_name:
-            sample_to_run[sample] = max(current_run, 0)
+            sample_to_raw_run[sample] = max(current_run, 0)
 
-    run_ids = {cn: [] for cn in CLASS_INFO}
+    retained = []
+    retained_raw_runs = []
     for evt in epochs.events:
         sample = int(evt[0])
         gdf_key = id_to_key.get(int(evt[2]), '')
         class_name = class_for_annotation_key(gdf_key)
         if class_name:
-            run_ids[class_name].append(int(sample_to_run.get(sample, 0)))
+            raw_run = int(sample_to_raw_run.get(sample, 0))
+            retained.append((class_name, raw_run))
+            retained_raw_runs.append(raw_run)
+
+    run_id_map = {
+        raw_run: compact_run
+        for compact_run, raw_run in enumerate(sorted(set(retained_raw_runs)))
+    }
+    run_ids = {cn: [] for cn in CLASS_INFO}
+    for class_name, raw_run in retained:
+        run_ids[class_name].append(run_id_map[raw_run])
 
     return run_ids
