@@ -148,6 +148,8 @@ New function — this is the big addition. Instead of using a pre-skull-stripped
 
 This is the most significantly changed module. The old `PointCloud.py` generated a point cloud by thresholding voxels, adding jitter, centering, flipping Y, applying a colour gradient, and then optionally converting to a mesh using **Alpha Shapes**. The new code replaces the Alpha Shapes approach entirely with **Marching Cubes** from `scikit-image`.
 
+The rendered cortical surface is a representative anonymised NFBS T1w subject (`A00063008`), not an MRI from the BCI Competition IV-2a EEG subject. The BCI dataset does not provide subject-specific anatomical MRI, so the brain mesh is used as a spatial reference while electrodes are positioned through the standard 10-20 montage and mapped onto the representative cortex. This should be described as illustrative anatomical context rather than individual source localisation.
+
 ### What Changed and Why
 
 **Alpha Shapes** worked by wrapping a surface around a noisy point cloud. This had several problems:
@@ -196,6 +198,7 @@ The main pipeline function. Steps:
 | Decision | Rationale |
 |---|---|
 | **Marching Cubes over Alpha Shapes** | Deterministic, operates directly on the volume, produces vertices in voxel space for accurate region assignment. |
+| **Representative cortex for EEG visualisation** | BCI-IV-2a provides EEG but not subject MRI. The NFBS cortex gives a stable anatomical scaffold for showing standard-montage electrode activity without claiming subject-specific cortical anatomy. |
 | **Forward-carry region IDs** | Assigning labels before transforms avoids the inaccuracy of reverse-transforming and hoping to land on the correct atlas voxel. |
 | **Mesh adjacency gap-fill** | Better suited for isosurface vertices than volumetric EDT since they don't sit on a regular grid. |
 | **Face winding flip** | The Y-axis flip inverts the mesh handedness. Reversing the face winding (`[:, ::-1]`) compensates, so normals stay outward-facing. |
