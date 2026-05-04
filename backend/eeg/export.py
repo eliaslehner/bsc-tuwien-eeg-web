@@ -58,6 +58,7 @@ def build_eeg_json(dataset_info, session_events, erd_ers_data, channel_regions):
             'duration': round(float(dataset_info.get('duration', 0)), 2),
             'channels': list(dataset_info.get('channels', STANDARD_EEG_CHANNELS)),
             'n_channels': len(dataset_info.get('channels', STANDARD_EEG_CHANNELS)),
+            'n_runs': int(dataset_info.get('n_runs', 6)),
             'classes': classes,
         },
         'trial_timeline': {
@@ -69,6 +70,10 @@ def build_eeg_json(dataset_info, session_events, erd_ers_data, channel_regions):
             ],
         },
         'events': session_events,
+        'trial_run_ids': {
+            cn: [int(run_id) for run_id in run_ids]
+            for cn, run_ids in dataset_info.get('trial_run_ids', {}).items()
+        },
         'erd_ers': erd_json,
         'channel_regions': channel_regions,
     }
@@ -93,6 +98,7 @@ def generate_synthetic_data(channels=None, channel_regions=None):
     # Spatial weights: lateralisation and centrality
     central = {'Cz', 'C1', 'C2', 'FCz', 'CPz'}
     near_central = {'C3', 'C4', 'FC1', 'FC2', 'CP1', 'CP2'}
+    n_runs = 6
 
     hw = {}  # hemisphere weight: -1 = left, +1 = right, 0 = midline
     cw = {}  # central weight: 1.0 = near Cz, 0.3 = peripheral
@@ -113,12 +119,18 @@ def generate_synthetic_data(channels=None, channel_regions=None):
         return c
 
     erd_ers_data = {}
+    trial_run_ids = {}
     for band, (lo, hi) in [('mu', (8, 13)), ('beta', (13, 30))]:
         scale = 1.0 if band == 'mu' else 0.6
         classes = {}
 
         for cn in CLASS_INFO:
             n_sim_trials = 68  # roughly clean trials
+            trials_per_run = int(np.ceil(n_sim_trials / n_runs))
+            trial_run_ids[cn] = [
+                min(i // trials_per_run, n_runs - 1)
+                for i in range(n_sim_trials)
+            ]
             data = np.zeros((n_sim_trials, n_ch, n_bins))
             for t_idx in range(n_sim_trials):
                 for i, ch in enumerate(channels):
@@ -167,6 +179,8 @@ def generate_synthetic_data(channels=None, channel_regions=None):
         'baseline_tmax': 0.0,
         'trial_counts': {cn: 72 for cn in CLASS_INFO},
         'clean_counts': {cn: 68 for cn in CLASS_INFO},
+        'trial_run_ids': trial_run_ids,
+        'n_runs': n_runs,
     }
 
     return build_eeg_json(dataset_info, events, erd_ers_data, channel_regions)

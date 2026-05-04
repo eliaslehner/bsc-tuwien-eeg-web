@@ -30,6 +30,12 @@ export default function Home() {
             .catch(() => {});
     }, []);
 
+    useEffect(() => {
+        const nRuns = eegData?.dataset?.n_runs;
+        if (!nRuns) return;
+        setSelectedRuns(new Set(Array.from({ length: nRuns }, (_, i) => i)));
+    }, [eegData?.dataset?.n_runs]);
+
     const handleRegionHover = useCallback(
         (name) => setActiveRegion(name),
         [],
@@ -62,7 +68,7 @@ export default function Home() {
     const activeData = useMemo(() => {
         if (!eegData || !eegData.erd_ers) return null;
         
-        const n_runs = 6;
+        const n_runs = eegData.dataset?.n_runs ?? 6;
         const result = { ...eegData, erd_ers: { ...eegData.erd_ers } };
         
         // We will mock the aggregated structure for Timeline and BrainViewer
@@ -82,6 +88,9 @@ export default function Home() {
                 
                 const n_trials = trialsData.length;
                 const trials_per_run = Math.ceil(n_trials / n_runs);
+                const trialRunIds = eegData.trial_run_ids?.[cn];
+                const hasTrialRunIds = Array.isArray(trialRunIds)
+                    && trialRunIds.length >= n_trials;
                 
                 const n_ch = trialsData[0].length;
                 const n_times = trialsData[0][0].length;
@@ -90,7 +99,9 @@ export default function Home() {
                 let count = 0;
                 
                 for (let i = 0; i < n_trials; i++) {
-                    const run_idx = Math.floor(i / trials_per_run);
+                    const run_idx = hasTrialRunIds
+                        ? trialRunIds[i]
+                        : Math.floor(i / trials_per_run);
                     if (selectedRuns.has(run_idx)) {
                         for (let c = 0; c < n_ch; c++) {
                             for (let t = 0; t < n_times; t++) {

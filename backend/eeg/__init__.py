@@ -10,7 +10,7 @@ from .loader import (
 from .processing import (
     preprocess_raw, create_epochs,
     compute_band_erd_ers, downsample_timecourse,
-    get_class_epoch_counts,
+    get_class_epoch_counts, get_class_epoch_run_ids,
 )
 from .export import (
     build_channel_regions, build_eeg_json,
@@ -64,6 +64,11 @@ def _process_gdf(config, gdf_path, channel_regions):
         return generate_synthetic_data(config.eeg_channels, channel_regions)
 
     clean_counts = get_class_epoch_counts(broadband_epochs)
+    trial_run_ids = get_class_epoch_run_ids(broadband_epochs, events, event_id)
+    n_runs = (
+        max(1, max((run_id for ids in trial_run_ids.values() for run_id in ids), default=-1) + 1)
+        if trial_run_ids else 6
+    )
     print(f"  Clean trials: {clean_counts}")
 
     erd_ers_data = {}
@@ -109,6 +114,8 @@ def _process_gdf(config, gdf_path, channel_regions):
         'baseline_tmax': config.eeg_baseline_tmax,
         'trial_counts': trial_counts,
         'clean_counts': clean_counts,
+        'trial_run_ids': trial_run_ids,
+        'n_runs': n_runs,
     }
 
     return build_eeg_json(dataset_info, session_events, erd_ers_data, channel_regions)

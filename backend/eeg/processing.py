@@ -140,3 +140,36 @@ def get_class_epoch_counts(epochs):
         if cn:
             counts[cn] = len(epochs[key])
     return counts
+
+
+def get_class_epoch_run_ids(epochs, events, event_id):
+    """Get per-class run IDs aligned with retained epochs."""
+    run_start_code = event_id.get('32766')
+    if run_start_code is None:
+        return {}
+
+    id_to_key = {int(v): k for k, v in event_id.items()}
+    gdf_to_class = {str(info['event_code']): cn for cn, info in CLASS_INFO.items()}
+
+    sample_to_run = {}
+    current_run = -1
+    for evt in events:
+        sample = int(evt[0])
+        mne_code = int(evt[2])
+        if mne_code == run_start_code:
+            current_run += 1
+            continue
+
+        class_name = gdf_to_class.get(id_to_key.get(mne_code, ''))
+        if class_name:
+            sample_to_run[sample] = max(current_run, 0)
+
+    run_ids = {cn: [] for cn in CLASS_INFO}
+    for evt in epochs.events:
+        sample = int(evt[0])
+        gdf_key = id_to_key.get(int(evt[2]), '')
+        class_name = gdf_to_class.get(gdf_key)
+        if class_name:
+            run_ids[class_name].append(int(sample_to_run.get(sample, 0)))
+
+    return run_ids

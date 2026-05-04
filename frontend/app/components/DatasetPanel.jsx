@@ -30,6 +30,9 @@ export default function DatasetPanel({
     }
 
     const { dataset } = eegData;
+    const nRuns = dataset.n_runs || 6;
+    const runs = Array.from({ length: nRuns }, (_, i) => i);
+    const hasTrialRunIds = Object.keys(eegData.trial_run_ids || {}).length > 0;
 
     return (
         <aside className="dataset-panel">
@@ -53,10 +56,10 @@ export default function DatasetPanel({
             <div className="panel-section">
                 <div className="panel-header">
                     <h2>Runs</h2>
-                    <InfoPopup text="Select which runs to include in the average. (Assumes 6 runs total)" />
+                    <InfoPopup text={hasTrialRunIds ? 'Select which recording runs to include in the average.' : 'Select which runs to include in the average. Older data exports split trials evenly across runs.'} />
                 </div>
                 <div className="run-selector">
-                    {[0, 1, 2, 3, 4, 5].map((run) => (
+                    {runs.map((run) => (
                         <button
                             key={run}
                             className={`run-btn ${selectedRuns.has(run) ? 'run-active' : ''}`}
