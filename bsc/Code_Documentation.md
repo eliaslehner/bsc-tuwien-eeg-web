@@ -645,14 +645,14 @@ The CAR step (`raw.set_eeg_reference('average', projection=False)`) removes the 
 
 Creates MNE `Epochs` around the motor imagery cue events (769–772) with the specified time window (default: −0.5 to +4.0 s relative to cue onset). The baseline period (−0.5 to 0 s) captures the fixation-cross rest state before the cue appears.
 
-Artifact rejection works by finding all events with type 1023 (expert-marked rejected trials) in the original event stream, then identifying which epochs fall within the same trial window (±8 s). Those epochs are dropped via `epochs.drop()` with reason `'artifact'`.
+Artifact rejection works by finding all events with type 1023 (expert-marked rejected trials) in the original event stream, then identifying which epochs fall within the configured epoch duration (default 4.5 s). Those epochs are dropped via `epochs.drop()` with reason `'artifact'`.
 
-##### `compute_band_erd_ers(epochs, l_freq, h_freq, baseline_tmin, baseline_tmax)`
+##### `compute_band_erd_ers(epochs, baseline_tmin, baseline_tmax)`
 
-Computes Event-Related Desynchronisation / Synchronisation (ERD/ERS) for a given frequency band. The steps are:
+Computes Event-Related Desynchronisation / Synchronisation (ERD/ERS) for already band-filtered epochs. The steps are:
 
-1. For each motor imagery class, select the corresponding epochs.
-2. Bandpass filter the epochs to the target band (e.g. 8–13 Hz for mu).
+1. `_process_gdf` first filters a continuous copy of the preprocessed raw signal to the target band (e.g. 8–13 Hz for mu), then creates epochs from that filtered raw object.
+2. For each motor imagery class, select the corresponding epochs.
 3. Apply the Hilbert transform (`scipy.signal.hilbert`) to get the analytic signal, then take |analytic|² for instantaneous power.
 4. Computes per-trial power and per-trial baseline power over the baseline time window, rather than averaging across all trials initially.
 5. Compute baseline power as the mean over the baseline time window per trial. The baseline is clamped to `np.finfo(float).tiny` (~2.2e-308) to prevent division by zero without distorting near-zero baselines.
@@ -719,7 +719,7 @@ Top-level function called by `main.py`. Delegates to `_process_gdf` for real dat
 
 ##### `_process_gdf(config, gdf_path, channel_regions)`
 
-Internal helper that handles the real-data path: loads the GDF file, runs preprocessing (EOG removal → channel picking → CAR → bandpass), creates epochs, computes ERD/ERS for both mu and beta bands, downsamples, and assembles the JSON structure. Separated from `run_eeg_pipeline` to keep the orchestrator readable.
+Internal helper that handles the real-data path: loads the GDF file, runs preprocessing (EOG removal → channel picking → CAR → broad 0.5–40 Hz cleanup), filters continuous raw copies into mu and beta bands, creates epochs from each band-filtered raw object, computes ERD/ERS, downsamples, and assembles the JSON structure. Separated from `run_eeg_pipeline` to keep the orchestrator readable.
 
 The `electrode_mappings` parameter comes from step 5 of the main pipeline (electrode mapping). It provides the channel → brain region association that the frontend needs to map per-channel ERD/ERS values onto the 3D brain mesh.
 
@@ -744,6 +744,7 @@ The mu (8–13 Hz) and beta (13–30 Hz) band ranges are defined as Python tuple
 | Decision | Rationale |
 |---|---|
 | **Batch processing, not streaming** | All EEG data is processed when the backend pipeline runs. The frontend fetches the pre-computed JSON as a static file. This avoids the complexity of a running backend server while keeping frontend interactions instant after the initial load. |
+| **Mu/Beta split instead of a single 8–30 Hz band** | The proposal described one 8–30 Hz motor-imagery band. The implementation separates mu (8–13 Hz) and beta (13–30 Hz) because they have distinct physiological interpretations and are commonly analysed separately in motor-imagery BCI literature. |
 | **Hilbert transform for band power** | More computationally efficient than Morlet wavelets for the visualisation use case. Gives a smooth instantaneous power estimate suitable for the ~50 ms time resolution of the exported data. |
 | **EOG regression over ICA** | Linear regression is simpler, faster, and recommended by the dataset documentation. ICA would require manual component inspection which doesn't fit an automated pipeline. |
 | **CAR re-referencing before bandpass** | The dataset was recorded with a left-mastoid hardware reference, which artificially inflates right-hemisphere amplitudes. Re-referencing to the common average removes this bias before any power computation. CAR is applied after channel picking so the average is computed over only the 22 EEG channels. |
