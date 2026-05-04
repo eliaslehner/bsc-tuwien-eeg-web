@@ -72,7 +72,7 @@ def create_epochs(raw, events, event_id, tmin=-0.5, tmax=4.0):
         reject_samples = {int(e[0]) for e in events if int(e[2]) == reject_code}
         if reject_samples:
             sfreq = raw.info['sfreq']
-            window = int(sfreq * 8)  # trial window ~8 s
+            window = int(sfreq * (tmax - tmin))
             drop_idx = [
                 i for i, ep in enumerate(epochs.events)
                 if any(abs(int(ep[0]) - rs) < window for rs in reject_samples)
