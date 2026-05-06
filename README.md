@@ -9,6 +9,7 @@ Developed as part of a Bachelor Thesis at TU Wien.
 ## Table of Contents
 
 - [Overview](#overview)
+- [Screenshot](#screenshot)
 - [Features](#features)
 - [Architecture](#architecture)
 - [Technology Stack](#technology-stack)
@@ -27,6 +28,12 @@ Developed as part of a Bachelor Thesis at TU Wien.
 Interpreting raw EEG signals for Motor Imagery Brain-Computer Interfaces (BCI) remains a significant challenge due to the high dimensionality and abstract nature of the data. Traditional analysis tools are often desktop-bound, resource-intensive, and lack intuitive spatial visualisation.
 
 This project provides a web-based alternative: a pipeline that converts structural MRI data (NIfTI volumes) into a region-segmented 3D brain mesh, maps EEG electrodes from the international 10-20 system onto the cortical surface, and renders the result as an interactive 3D viewer in any modern web browser. The system is designed around the [BCI Competition IV-2a dataset](http://www.bbci.de/competition/iv/) (22-channel EEG, 9 subjects, 4 motor imagery classes) and the Destrieux 2009 cortical atlas.
+
+---
+
+## Screenshot
+
+![Screenshot of the interactive 3D brain viewer](data/img/brainviewer.png)
 
 ---
 
@@ -89,46 +96,78 @@ NIfTI Volumes ──> [Backend Pipeline] ──> PLY Mesh + JSON ──> [Fronte
 
 ```
 bsc-tuwien-eeg-web/
-├── backend/
-│   ├── main.py                  Pipeline entry point
-│   ├── config.py                Centralised configuration (dataclass + .env)
-│   ├── .env.example             Example environment variables
-│   ├── model/
-│   │   ├── loader.py            NIfTI loading, masking, normalisation
-│   │   └── pointcloud.py        Marching Cubes mesh generation + region mapping
-│   ├── regions/
-│   │   ├── atlas.py             Destrieux atlas fetching, resampling, gap-fill
-│   │   ├── palette.py           Region colour palette generation
-│   │   └── mapping.py           Legacy PLY vertex-to-region mapping
-│   ├── electrode/
-│   │   └── mapping.py           Electrode-to-region mapping + JSON export
-│   ├── viewer/
-│   │   └── viewer.py            Interactive Open3D desktop viewer
-│   ├── eeg/                     Placeholder for EEG signal processing
-│   └── testing/                 Placeholder for tests
-├── frontend/
-│   ├── app/
-│   │   ├── layout.js            Root layout and metadata
-│   │   ├── page.js              Main page with state management
-│   │   ├── globals.css          Full CSS design system
-│   │   └── components/
-│   │       ├── BrainViewer.jsx  Three.js 3D renderer + SSAO + hover + highlight
-│   │       └── ElectrodeSidebar.jsx  Electrode list grouped by region
-│   ├── public/data/             Static assets served to the browser
-│   │   ├── brain_mesh_destrieux_mapped.ply
-│   │   └── region_metadata.json
-│   └── package.json
-├── data/
-│   ├── nfbs/                    Input NIfTI volumes (not tracked in git)
-│   └── model/                   Intermediate pipeline outputs
-├── doc/
-│   ├── Dataset_Desc_2a.md       BCI Competition IV-2a dataset description
-│   └── Timeline.md              Development timeline and sprint plan
-├── bsc/
-│   ├── Code_Documentation.md    Detailed code documentation
-│   └── Progress_Documentation.md  Development progress log
-├── requirements.txt             Python dependencies
-└── .gitignore
+|-- backend/
+|   |-- main.py                         Pipeline entry point
+|   |-- config.py                       Centralised configuration (dataclass + .env)
+|   |-- .env.example                    Example environment variables
+|   |-- model/
+|   |   |-- loader.py                   NIfTI loading, masking, normalisation
+|   |   `-- pointcloud.py               Marching Cubes mesh generation + region mapping
+|   |-- regions/
+|   |   |-- atlas.py                    Destrieux atlas fetching, resampling, gap-fill
+|   |   |-- palette.py                  Region colour palette generation
+|   |   `-- mapping.py                  Legacy PLY vertex-to-region mapping
+|   |-- electrode/
+|   |   `-- mapping.py                  Electrode-to-region mapping + JSON export
+|   |-- eeg/
+|   |   |-- loader.py                   GDF loading and fallback demo data
+|   |   |-- processing.py               EEG epoching, filtering, and features
+|   |   `-- export.py                   Browser-ready EEG JSON export
+|   |-- viewer/
+|   |   `-- viewer.py                   Interactive Open3D desktop viewer
+|   `-- testing/
+|-- frontend/
+|   |-- app/
+|   |   |-- layout.js                   Root layout and metadata
+|   |   |-- page.js                     Main page with state management
+|   |   |-- globals.css                 Full CSS design system
+|   |   |-- lib/
+|   |   |   `-- eeg.js                  EEG data helpers
+|   |   `-- components/
+|   |       |-- BrainViewer.jsx         Three.js renderer + SSAO + hover + highlight
+|   |       |-- DatasetPanel.jsx        Dataset controls and metadata panel
+|   |       |-- ElectrodeSidebar.jsx    Electrode list grouped by region
+|   |       |-- InfoPopup.jsx           Region/electrode hover details
+|   |       |-- Timeline.jsx            EEG timeline container
+|   |       |-- TimelineCurves.jsx      EEG curve visualisation
+|   |       `-- TimelineHeatmap.jsx     EEG heatmap visualisation
+|   |-- public/data/                    Static assets served to the browser
+|   |   |-- brain_mesh_destrieux_mapped.ply
+|   |   |-- region_metadata.json
+|   |   `-- eeg_data.json
+|   `-- package.json
+|-- data/
+|   |-- eeg/
+|   |   |-- README.md
+|   |   |-- A01T.gdf                   Included BCI Competition IV-2a training file
+|   |   `-- A01E.gdf                   Included BCI Competition IV-2a evaluation file
+|   |-- img/
+|   |   |-- brainviewer.png            Frontend screenshot used in this README
+|   |   |-- Placement_Electrodes.png
+|   |   |-- 3D Electrodes Mapping.png
+|   |   |-- model-types.png
+|   |   `-- inspiration/
+|   |-- model/
+|   |   `-- mapped/brainmapping_exports/
+|   |       `-- brain_mesh_destrieux_mapped.ply
+|   `-- nfbs/
+|       |-- A00063008_NFB3_T1w.nii
+|       |-- A00063008_NFB3_T1w_brain.nii
+|       `-- A00063008_NFB3_T1w_brainmask.nii
+|-- doc/
+|   |-- Browser Layout.pdf
+|   |-- Dataset_Desc_2a.md
+|   |-- Dataset_Desc_2a.pdf
+|   |-- Timeline.md
+|   `-- Timeline.pdf
+|-- bsc/
+|   |-- Code_Documentation.md
+|   |-- Frontend_Design_Review.md
+|   |-- Progress_Documentation.md
+|   `-- thesis-proposal/
+|-- requirements.txt
+|-- README.md
+`-- .gitignore
 ```
 
 ---
@@ -180,15 +219,20 @@ npm install
 cd ..
 ```
 
-### 4. Prepare input data
+### 4. Verify the included input data
 
-Place the required NIfTI volumes in the `data/nfbs/` directory. The pipeline expects three files:
+The repository includes the sample NIfTI volumes used by the backend pipeline in `data/nfbs/`. These files are from the Neurofeedback Skull-stripped (NFBS) repository, collected as part of the Enhanced Rockland Sample Neurofeedback Study. The pipeline expects three files:
 
 - `A00063008_NFB3_T1w.nii` -- Full T1-weighted MRI volume
 - `A00063008_NFB3_T1w_brain.nii` -- Skull-stripped brain volume
 - `A00063008_NFB3_T1w_brainmask.nii` -- Binary brain mask
 
-These files are sourced from the [Nathan Kline Institute Rockland Sample](http://fcon_1000.projects.nitrc.org/indi/enhanced/) and are not included in the repository due to their size.
+The repository also includes two BCI Competition IV-2a GDF files in `data/eeg/`:
+
+- `A01T.gdf` -- Subject 1 training session
+- `A01E.gdf` -- Subject 1 evaluation session
+
+To use different subjects or sessions, add the corresponding GDF files to `data/eeg/` and update `EEG_SUBJECT` and `EEG_SESSION` in `backend/.env`.
 
 ---
 
@@ -236,7 +280,7 @@ This executes the full processing pipeline:
 4. Generate the brain mesh via Marching Cubes
 5. Assign region IDs per vertex (forward-carry from atlas)
 6. Map EEG electrodes to cortical regions
-7. Export `brain_mesh_destrieux_mapped.ply` and `region_metadata.json` to `frontend/public/data/`
+7. Export `brain_mesh_destrieux_mapped.ply`, `region_metadata.json`, and `eeg_data.json` to `frontend/public/data/`
 
 ### Start the frontend
 
@@ -251,20 +295,50 @@ Open [http://localhost:3000](http://localhost:3000) in a browser to view the int
 
 ## Dataset
 
-The visualisation framework is designed around the **BCI Competition IV-2a dataset**, a standard benchmark for motor imagery EEG research:
+The repository uses two external data sources: NFBS neuroimaging data for the structural brain model and BCI Competition IV-2a EEG data for motor imagery signals.
+
+### NFBS / Enhanced NKI-RS Neurofeedback Data
+
+The included NIfTI files in `data/nfbs/` are sourced from the **Neurofeedback Skull-stripped (NFBS) repository**:
+
+- `A00063008_NFB3_T1w.nii`
+- `A00063008_NFB3_T1w_brain.nii`
+- `A00063008_NFB3_T1w_brainmask.nii`
+
+NFBS is a database of 125 manually skull-stripped T1-weighted anatomical MRI scans. It provides gold-standard training and testing data for skull-stripping and related machine-learning workflows, and was collected as part of the Enhanced Rockland Sample Neurofeedback Study.
+
+Source pages:
+
+- [NFBS Skull-Stripped Repository](https://preprocessed-connectomes-project.org/NFB_skullstripped/)
+- [NFBS GigaScience data note](https://doi.org/10.1186/s13742-016-0150-5)
+- [NKI-RS About page](https://rocklandsample.org/about)
+
+### BCI Competition IV-2a EEG Data
+
+The visualisation framework is designed around the **BCI Competition IV-2a dataset**, listed by BNCI Horizon 2020 as **Four class motor imagery (001-2014)**, a standard benchmark for motor imagery EEG research:
 
 - **Subjects**: 9
 - **Motor imagery classes**: Left Hand, Right Hand, Feet, Tongue
 - **Electrodes**: 22 Ag/AgCl channels (international 10-20 system)
 - **Sampling rate**: 250 Hz
 - **Bandpass filter**: 0.5--100 Hz (recording), 8--30 Hz (Mu/Beta isolation for MI analysis)
+- **Included files**: `data/eeg/A01T.gdf`, `data/eeg/A01E.gdf`
+- **License**: [Creative Commons Attribution No Derivatives 4.0 International (CC BY-ND 4.0)](https://creativecommons.org/licenses/by-nd/4.0/)
+- **Licensor**: Institute for Knowledge Discovery, Graz University of Technology
 
 For full details on the dataset structure, event types, and evaluation criteria, see `doc/Dataset_Desc_2a.md`.
 
 **Reference**: C. Brunner, R. Leeb, G. R. Mueller-Putz, A. Schloegl, and G. Pfurtscheller, "BCI Competition 2008 -- Graz data set A," Institute for Knowledge Discovery, Graz University of Technology, Austria, 2008.
 
+Source page: [BNCI Horizon 2020 data sets - Four class motor imagery (001-2014)](https://bnci-horizon-2020.eu/database/data-sets)
+
 ---
 
 ## License
 
-This project is developed as part of a Bachelor Thesis at TU Wien. Please contact the author for licensing information.
+This project is developed as part of a Bachelor Thesis at TU Wien. Please contact the author for licensing information about the project code and original project materials.
+
+Third-party data remains governed by its original source terms:
+
+- NFBS neuroimaging data: cite the NFBS data note by Puccio et al. (2016). The GigaScience article is distributed under CC BY 4.0, and the article states that the CC0 public-domain waiver applies to data made available in the article unless otherwise stated.
+- BCI Competition IV-2a / BNCI Horizon 2020 dataset 001-2014: licensed as CC BY-ND 4.0, with attribution to the Institute for Knowledge Discovery, Graz University of Technology.
