@@ -459,10 +459,10 @@ export default function BrainViewer({
             // Mesh axis convention: -X anterior, +X posterior, +Y superior,
             // -Z anatomical left, +Z anatomical right. Verified empirically:
             // C3 → "L G_precentral" sits on the -Z side, C4 → "R G_precentral"
-            // on the +Z side. All three multi-view panes mirror X in projection
-            // for neurological convention: top view shows anatomical left on
-            // screen-left, side views show anterior on the outer edge of each
-            // pane (screen-left for the left pane, screen-right for the right).
+            // on the +Z side. The left/right SIDE panes mirror X in projection
+            // (anterior on the outer edge of each pane). The TOP pane is NOT
+            // mirrored, so its left/right matches the single (free-orbit) view and
+            // the hover label matches the hemisphere actually drawn there.
             // Multi-view positions are recomputed per frame to fit each pane's aspect.
             geometry.computeBoundingSphere();
             brainRadius = geometry.boundingSphere?.radius
@@ -576,14 +576,15 @@ export default function BrainViewer({
                 renderer.setScissor(0, 0, w3, h);
                 renderer.render(scene, leftCamera);
 
-                // Top View: view dir -Y, anterior at top, anatomical left on screen-left.
+                // Top View: view dir -Y, anterior at top. NOT mirrored — renders the
+                // true 3D geometry so its left/right matches the single (free-orbit)
+                // view, and the hover label matches the hemisphere actually drawn.
                 const aspectT = w3 / h;
                 const distT = fitDistance(aspectT);
                 topCamera.position.set(centerPoint.x, centerPoint.y + distT, centerPoint.z);
                 topCamera.lookAt(centerPoint);
                 topCamera.aspect = aspectT;
                 topCamera.updateProjectionMatrix();
-                mirrorProjectionX(topCamera);
                 renderer.setViewport(w3, 0, w3, h);
                 renderer.setScissor(w3, 0, w3, h);
                 renderer.render(scene, topCamera);
