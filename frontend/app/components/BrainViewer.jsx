@@ -157,6 +157,16 @@ function computeHeatmapColors(
             continue;
         }
 
+        // Defensive: a contrast-shaped {a,b} value reaches here only if class
+        // colours are unavailable — render grey rather than feed an object to
+        // the diverging scale (which would produce NaN colours).
+        if (typeof val === 'object') {
+            colors[i * 3] = 0.12;
+            colors[i * 3 + 1] = 0.12;
+            colors[i * 3 + 2] = 0.12;
+            continue;
+        }
+
         // Non-contrast: diverging blue (ERD) - grey - red (ERS).
         if (Math.abs(val) < (erdThreshold || 0)) {
             colors[i * 3] = 0.2;
