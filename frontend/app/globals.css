@@ -799,6 +799,42 @@ body {
     cursor: grab;
 }
 
+/* === Header Actions (right-aligned button group) === */
+.header-actions {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+}
+
+/* === Mirror Toggle === */
+.mirror-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    height: 32px;
+    padding: 0 0.7rem;
+    border-radius: 16px;
+    border: 1px solid #333;
+    background: transparent;
+    color: #666;
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.mirror-btn:hover {
+    border-color: #444;
+    color: #aaa;
+}
+
+.mirror-btn.active {
+    border-color: #6ee7b7;
+    color: #6ee7b7;
+    background: rgba(110, 231, 183, 0.08);
+}
+
 /* === Help Button === */
 .help-btn {
     display: flex;
@@ -811,7 +847,6 @@ body {
     background: transparent;
     color: #666;
     cursor: pointer;
-    margin-left: auto;
     transition: all 0.15s;
 }
 
