@@ -9,14 +9,8 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { SSAOPass } from 'three/examples/jsm/postprocessing/SSAOPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { activeChannelsFor } from '../lib/eeg';
+import { contrastWinner, contrastColorRGB, hexToRgb01 } from '../lib/contrastColor.mjs';
 
-/**
- * Compute per-vertex heatmap colours from ERD/ERS data.
- *
- * Maps channel-level band power to brain regions via the electrode-region
- * mapping, then colours each vertex by its region's value using a diverging
- * blue (ERD) - grey - red (ERS) colour scale.
- */
 function computeRegionAveragesAtTime(
     eegData, selectedClasses, selectedBand, timeIndex, contrastMode, contrastOrder, channelMode,
     mirror = null,
@@ -30,110 +24,113 @@ function computeRegionAveragesAtTime(
     if (activeClasses.length === 0) return null;
 
     const activeChannelSet = new Set(activeChannelsFor(channelMode || 'all', channels));
+    const isContrast = contrastMode && activeClasses.length === 2;
 
-    // Per-channel value computation
-    const channelValues = {};
+    // Bucket a per-channel value map into a per-region mean, mirroring midline
+    // electrodes into both hemispheres when the Mirror toggle is on.
+    const bucketize = (chValues) => {
+        const buckets = {};
+        const push = (rid, value) => {
+            if (rid == null) return;
+            (buckets[rid] ||= []).push(value);
+        };
+        for (const [ch, value] of Object.entries(chValues)) {
+            const region = channelRegions?.[ch];
+            if (!region) continue;
+            const rid = region.region_id;
+            push(rid, value);
+            if (mirror?.enabled && mirror.midline?.has(ch)) {
+                const mid = mirror.map?.[rid];
+                if (mid != null && mid !== rid) push(mid, value);
+            }
+        }
+        const avg = {};
+        for (const [rid, vals] of Object.entries(buckets)) {
+            avg[rid] = vals.reduce((a, b) => a + b, 0) / vals.length;
+        }
+        return avg;
+    };
+
+    if (isContrast) {
+        const c1 = contrastOrder?.[0] || activeClasses[0];
+        const c2 = contrastOrder?.[1] || activeClasses[1];
+        const chA = {};
+        const chB = {};
+        for (let i = 0; i < channels.length; i++) {
+            if (!activeChannelSet.has(channels[i])) continue;
+            chA[channels[i]] = bandData[c1]?.[i]?.[timeIndex] ?? 0;
+            chB[channels[i]] = bandData[c2]?.[i]?.[timeIndex] ?? 0;
+        }
+        const avgA = bucketize(chA);
+        const avgB = bucketize(chB);
+        const out = {};
+        for (const rid of new Set([...Object.keys(avgA), ...Object.keys(avgB)])) {
+            out[rid] = { a: avgA[rid] ?? 0, b: avgB[rid] ?? 0 };
+        }
+        return out; // { rid: {a, b} }
+    }
+
+    // Non-contrast: average over the selected classes.
+    const chValues = {};
     for (let i = 0; i < channels.length; i++) {
         if (!activeChannelSet.has(channels[i])) continue;
-        if (contrastMode && activeClasses.length === 2) {
-            const c1 = contrastOrder?.[0] || activeClasses[0];
-            const c2 = contrastOrder?.[1] || activeClasses[1];
-            const v1 = bandData[c1]?.[i]?.[timeIndex] ?? 0;
-            const v2 = bandData[c2]?.[i]?.[timeIndex] ?? 0;
-            channelValues[channels[i]] = v1 - v2;
-        } else {
-            let sum = 0;
-            let count = 0;
-            for (const cls of activeClasses) {
-                const cd = bandData[cls];
-                if (cd?.[i]) {
-                    sum += cd[i][timeIndex] ?? 0;
-                    count++;
-                }
+        let sum = 0;
+        let count = 0;
+        for (const cls of activeClasses) {
+            const cd = bandData[cls];
+            if (cd?.[i]) {
+                sum += cd[i][timeIndex] ?? 0;
+                count++;
             }
-            if (count > 0) channelValues[channels[i]] = sum / count;
         }
+        if (count > 0) chValues[channels[i]] = sum / count;
     }
-
-    // Map channels to regions
-    const regionBuckets = {};
-    const pushVal = (rid, value) => {
-        if (rid == null) return;
-        if (!regionBuckets[rid]) regionBuckets[rid] = [];
-        regionBuckets[rid].push(value);
-    };
-    for (const [ch, value] of Object.entries(channelValues)) {
-        const region = channelRegions?.[ch];
-        if (!region) continue;
-        const rid = region.region_id;
-        pushVal(rid, value);
-        // Midline electrodes (Fz, Cz, Pz, …) straddle the longitudinal fissure,
-        // so their hemisphere is undetermined. Apply their value to the mirror
-        // region too — this is in the bucket/average itself, so neither side is
-        // biased and both light up.
-        if (mirror?.enabled && mirror.midline?.has(ch)) {
-            const mid = mirror.map?.[rid];
-            if (mid != null && mid !== rid) pushVal(mid, value);
-        }
-    }
-
-    const regionAvg = {};
-    for (const [rid, vals] of Object.entries(regionBuckets)) {
-        regionAvg[rid] = vals.reduce((a, b) => a + b, 0) / vals.length;
-    }
-
-    return regionAvg;
+    return bucketize(chValues); // { rid: number }
 }
 
 function computeHeatmapMaxAbs(
-    eegData, selectedClasses, selectedBand, contrastMode, contrastOrder, channelMode, mirror,
+    eegData, selectedClasses, selectedBand, contrastMode, contrastOrder, channelMode,
+    mirror, contrastPhenomenon,
 ) {
     const bandData = eegData?.erd_ers?.[selectedBand];
     const times = bandData?.times || [];
     if (!bandData || times.length === 0) return 1;
 
+    const activeClasses = [...selectedClasses].filter((c) => bandData[c]);
+    const isContrast = contrastMode && activeClasses.length === 2;
+
     let maxAbs = 1;
     for (let timeIndex = 0; timeIndex < times.length; timeIndex++) {
         const regionAvg = computeRegionAveragesAtTime(
-            eegData,
-            selectedClasses,
-            selectedBand,
-            timeIndex,
-            contrastMode,
-            contrastOrder,
-            channelMode,
-            mirror,
+            eegData, selectedClasses, selectedBand, timeIndex,
+            contrastMode, contrastOrder, channelMode, mirror,
         );
         if (!regionAvg) continue;
-
         for (const value of Object.values(regionAvg)) {
-            maxAbs = Math.max(maxAbs, Math.abs(value));
+            maxAbs = isContrast
+                ? Math.max(maxAbs, contrastWinner(value, contrastPhenomenon).magnitude)
+                : Math.max(maxAbs, Math.abs(value));
         }
     }
-
     return maxAbs;
 }
 
 function computeHeatmapColors(
     vertexRegionIds, eegData, selectedClasses, selectedBand, timeIndex,
     contrastMode, contrastOrder, erdThreshold, channelMode, maxAbs, mirror,
+    contrastPhenomenon, classColors,
 ) {
     if (!vertexRegionIds?.length) return null;
 
     const regionAvg = computeRegionAveragesAtTime(
-        eegData,
-        selectedClasses,
-        selectedBand,
-        timeIndex,
-        contrastMode,
-        contrastOrder,
-        channelMode,
-        mirror,
+        eegData, selectedClasses, selectedBand, timeIndex,
+        contrastMode, contrastOrder, channelMode, mirror,
     );
 
     const allVals = Object.values(regionAvg || {});
     if (allVals.length === 0) return null;
 
+    const isContrast = !!classColors && typeof allVals[0] === 'object';
     const n = vertexRegionIds.length;
     const colors = new Float32Array(n * 3);
 
@@ -141,34 +138,43 @@ function computeHeatmapColors(
         const rid = vertexRegionIds[i];
         const val = regionAvg[rid];
 
-        if (val !== undefined) {
-            // Apply threshold filter
-            if (Math.abs(val) < (erdThreshold || 0)) {
-                // Below threshold: neutral dark grey
-                colors[i * 3]     = 0.2;
-                colors[i * 3 + 1] = 0.2;
-                colors[i * 3 + 2] = 0.2;
-            } else {
-                const norm = Math.max(-1, Math.min(1, val / maxAbs));
-                if (norm < 0) {
-                    // Blue — ERD / desynchronisation
-                    const t = -norm;
-                    colors[i * 3]     = 0.15 * (1 - t) + 0.10 * t;
-                    colors[i * 3 + 1] = 0.15 * (1 - t) + 0.40 * t;
-                    colors[i * 3 + 2] = 0.15 * (1 - t) + 0.90 * t;
-                } else {
-                    // Red — ERS / synchronisation
-                    const t = norm;
-                    colors[i * 3]     = 0.15 * (1 - t) + 0.90 * t;
-                    colors[i * 3 + 1] = 0.15 * (1 - t) + 0.20 * t;
-                    colors[i * 3 + 2] = 0.15 * (1 - t) + 0.10 * t;
-                }
-            }
-        } else {
-            // No electrode maps here — dark grey
-            colors[i * 3]     = 0.12;
+        if (val === undefined) {
+            colors[i * 3] = 0.12;
             colors[i * 3 + 1] = 0.12;
             colors[i * 3 + 2] = 0.12;
+            continue;
+        }
+
+        if (isContrast) {
+            const [r, g, b] = contrastColorRGB({
+                ab: val, phenomenon: contrastPhenomenon,
+                colorA: classColors.a, colorB: classColors.b,
+                maxAbs, threshold: erdThreshold,
+            });
+            colors[i * 3] = r;
+            colors[i * 3 + 1] = g;
+            colors[i * 3 + 2] = b;
+            continue;
+        }
+
+        // Non-contrast: diverging blue (ERD) - grey - red (ERS).
+        if (Math.abs(val) < (erdThreshold || 0)) {
+            colors[i * 3] = 0.2;
+            colors[i * 3 + 1] = 0.2;
+            colors[i * 3 + 2] = 0.2;
+        } else {
+            const norm = Math.max(-1, Math.min(1, val / maxAbs));
+            if (norm < 0) {
+                const t = -norm;
+                colors[i * 3] = 0.15 * (1 - t) + 0.10 * t;
+                colors[i * 3 + 1] = 0.15 * (1 - t) + 0.40 * t;
+                colors[i * 3 + 2] = 0.15 * (1 - t) + 0.90 * t;
+            } else {
+                const t = norm;
+                colors[i * 3] = 0.15 * (1 - t) + 0.90 * t;
+                colors[i * 3 + 1] = 0.15 * (1 - t) + 0.20 * t;
+                colors[i * 3 + 2] = 0.15 * (1 - t) + 0.10 * t;
+            }
         }
     }
 
@@ -188,6 +194,7 @@ export default function BrainViewer({
     multiView,
     channelMode,
     mirrorMidline,
+    contrastPhenomenon,
 }) {
     const containerRef = useRef(null);
     const tooltipRef = useRef(null);
@@ -217,17 +224,22 @@ export default function BrainViewer({
         [mirrorMidline, mirrorMeta],
     );
 
+    const classColors = useMemo(() => {
+        if (!contrastMode) return null;
+        const classes = eegData?.dataset?.classes || [];
+        const find = (id) => classes.find((c) => c.id === id)?.color;
+        const a = find(contrastOrder?.[0]);
+        const b = find(contrastOrder?.[1]);
+        if (!a || !b) return null;
+        return { a: hexToRgb01(a), b: hexToRgb01(b) };
+    }, [contrastMode, contrastOrder, eegData]);
+
     const heatmapMaxAbs = useMemo(
         () => computeHeatmapMaxAbs(
-            eegData,
-            selectedClasses,
-            selectedBand,
-            contrastMode,
-            contrastOrder,
-            channelMode,
-            mirror,
+            eegData, selectedClasses, selectedBand, contrastMode, contrastOrder,
+            channelMode, mirror, contrastPhenomenon,
         ),
-        [eegData, selectedClasses, selectedBand, contrastMode, contrastOrder, channelMode, mirror],
+        [eegData, selectedClasses, selectedBand, contrastMode, contrastOrder, channelMode, mirror, contrastPhenomenon],
     );
 
     // ---- Heatmap effect ----
@@ -268,6 +280,7 @@ export default function BrainViewer({
             channelMode,
             heatmapMaxAbs,
             mirror,
+            contrastPhenomenon, classColors,
         );
 
         if (result) {
@@ -284,7 +297,7 @@ export default function BrainViewer({
             heatmapValuesRef.current = {};
         }
         colorAttr.needsUpdate = true;
-    }, [loading, heatmapEnabled, eegData, selectedClasses, selectedBand, currentTimeIndex, contrastMode, contrastOrder, erdThreshold, channelMode, heatmapMaxAbs, mirror]);
+    }, [loading, heatmapEnabled, eegData, selectedClasses, selectedBand, currentTimeIndex, contrastMode, contrastOrder, erdThreshold, channelMode, heatmapMaxAbs, mirror, contrastPhenomenon, classColors]);
 
     // ---- Three.js setup (once) ----
     useEffect(() => {
