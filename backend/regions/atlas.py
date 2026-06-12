@@ -48,6 +48,42 @@ def fetch_and_resample_atlas(brain_nii_img):
     return atlas_data, names
 
 
+def registration_coverage(atlas_volume_raw, brain_mask):
+    """
+    Report how well the resampled atlas overlaps the subject brain.
+
+    A correctly registered atlas labels most of the cortical ribbon and keeps
+    its labels INSIDE the brain. A large "outside-mask" fraction or low coverage
+    means the subject is not aligned to the atlas's space (a registration
+    problem), not a gap-filling problem.
+
+    Returns
+    -------
+    stats : dict
+    """
+    labelled = atlas_volume_raw > 0
+    n_brain = int(brain_mask.sum())
+    n_lab_total = int(labelled.sum())
+    n_lab_inside = int((labelled & brain_mask).sum())
+    n_lab_outside = n_lab_total - n_lab_inside
+
+    coverage = 100 * n_lab_inside / n_brain if n_brain else 0.0
+    outside_frac = 100 * n_lab_outside / n_lab_total if n_lab_total else 0.0
+
+    print(f"    Registration check: {coverage:.1f}% of brain voxels labelled, "
+          f"{outside_frac:.1f}% of atlas labels fall OUTSIDE the brain mask")
+    if outside_frac > 15 or coverage < 60:
+        print("    ^ High outside-mask / low coverage => subject is mis-aligned "
+              "to the atlas (registration), which the gap-fill then smears.")
+    return {
+        "coverage_pct": coverage,
+        "outside_frac_pct": outside_frac,
+        "labelled_inside": n_lab_inside,
+        "labelled_outside": n_lab_outside,
+        "brain_voxels": n_brain,
+    }
+
+
 def gap_fill_labels(atlas_volume, brain_mask):
     """
     Fill unlabelled brain voxels with the nearest labelled neighbour.

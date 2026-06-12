@@ -10,7 +10,10 @@ import numpy as np
 from backend.config import Config
 from backend.model.loader import load_nii_image, load_masked_volume
 from backend.model.pointcloud import generate_and_export
-from backend.regions.atlas import fetch_and_resample_atlas, gap_fill_labels
+from backend.model.template import generate_template_view
+from backend.regions.atlas import (
+    fetch_and_resample_atlas, gap_fill_labels, registration_coverage,
+)
 from backend.regions.palette import build_region_palette
 from backend.electrode.mapping import run_electrode_pipeline
 
@@ -47,8 +50,9 @@ def run(config=None):
 
     # ── Step 2: Destrieux atlas + gap-fill ──
     print("\n[2/6] Loading Destrieux atlas & gap-filling")
-    atlas_volume, names_map = fetch_and_resample_atlas(brain_nii)
-    atlas_volume, _ = gap_fill_labels(atlas_volume, brain_mask)
+    atlas_volume_raw, names_map = fetch_and_resample_atlas(brain_nii)
+    registration_coverage(atlas_volume_raw, brain_mask)
+    atlas_volume, _ = gap_fill_labels(atlas_volume_raw, brain_mask)
 
     # ── Step 3: Build region palette ──
     print("\n[3/6] Building region palette")
@@ -58,8 +62,14 @@ def run(config=None):
     # ── Step 4: Generate mesh (Marching Cubes) with forward-carried region IDs ──
     print("\n[4/6] Mesh generation (Marching Cubes) + region mapping")
     vertex_region_ids = generate_and_export(
-        config, masked_volume, atlas_volume, id_to_palette_idx, palette,
+        config, masked_volume, atlas_volume, atlas_volume_raw,
+        id_to_palette_idx, palette,
     )
+    # The pre-gap + current subject views are always exported above. The
+    # MNI-template reference view is more expensive (separate isosurface), so
+    # only build it when it will actually be viewed, or when forced.
+    if config.export_debug_views or config.show_viewer:
+        generate_template_view(config, id_to_palette_idx, palette)
 
     # ── Step 5: Electrode mapping & JSON export ──
     print("\n[5/6] Electrode mapping & JSON export")
@@ -76,9 +86,9 @@ def run(config=None):
 
     # ── Optional: Launch viewer ──
     if config.show_viewer:
-        print("\nLaunching viewer...")
-        from backend.viewer.viewer import main as viewer_main
-        viewer_main()
+        print("\nLaunching comparison viewer (pre-gap | current | reference)...")
+        from backend.viewer.viewer import compare_views
+        compare_views(config)
 
     print("\n" + "=" * 60)
     print("  Pipeline completed successfully.")

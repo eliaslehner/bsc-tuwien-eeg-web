@@ -38,6 +38,9 @@ class Config:
     pointcloud_ply_filename: str = os.getenv('POINTCLOUD_PLY_FILENAME', 'brain_pointcloud.ply')
     mesh_ply_filename: str = os.getenv('MESH_PLY_FILENAME', 'brain_mesh.ply')
     mapped_mesh_ply_filename: str = os.getenv('MAPPED_MESH_PLY_FILENAME', 'brain_mesh_destrieux_mapped.ply')
+    # Debug comparison views (see backend/model/template.py and pointcloud.py)
+    pregap_mesh_ply_filename: str = os.getenv('PREGAP_MESH_PLY_FILENAME', 'brain_mesh_pregap_mapped.ply')
+    template_mesh_ply_filename: str = os.getenv('TEMPLATE_MESH_PLY_FILENAME', 'template_destrieux_mapped.ply')
     output_json_filename: str = os.getenv('OUTPUT_JSON_FILENAME', 'region_metadata.json')
 
     # --- Point Cloud Parameters ---
@@ -54,6 +57,10 @@ class Config:
 
     # --- Export Options ---
     copy_mapped_mesh_to_frontend: bool = os.getenv('COPY_MAPPED_MESH_TO_FRONTEND', 'false').lower() in ('true', '1', 'yes')
+    # Force-build the MNI-template reference view even without the viewer.
+    # (The cheap pre-gap view is always exported; the template view is also
+    #  built automatically whenever show_viewer is on — see backend/main.py.)
+    export_debug_views: bool = os.getenv('EXPORT_DEBUG_VIEWS', 'false').lower() in ('true', '1', 'yes')
 
     # --- Device ---
     device: str = field(default_factory=lambda: _resolve_device(os.getenv('DEVICE', 'auto')))
@@ -94,6 +101,14 @@ class Config:
     @property
     def mapped_mesh_ply_path(self) -> str:
         return os.path.join(self.brainmapping_export_dir, self.mapped_mesh_ply_filename)
+
+    @property
+    def pregap_mesh_ply_path(self) -> str:
+        return os.path.join(self.brainmapping_export_dir, self.pregap_mesh_ply_filename)
+
+    @property
+    def template_mesh_ply_path(self) -> str:
+        return os.path.join(self.brainmapping_export_dir, self.template_mesh_ply_filename)
 
     @property
     def output_json_path(self) -> str:
