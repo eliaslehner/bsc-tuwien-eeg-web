@@ -1267,3 +1267,16 @@ body {
 .erd-ers-toggle button + button { border-left: 1px solid #2a2a2a; }
 .erd-ers-toggle button.active { background: rgba(110, 231, 183, 0.12); color: #6ee7b7; }
 
+/* === Contrast legend === */
+.brain-legend-contrast {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+.brain-legend-contrast-title {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: #aaa;
+}
+

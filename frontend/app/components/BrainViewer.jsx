@@ -234,6 +234,15 @@ export default function BrainViewer({
         return { a: hexToRgb01(a), b: hexToRgb01(b) };
     }, [contrastMode, contrastOrder, eegData]);
 
+    const classColorsLegend = useMemo(() => {
+        if (!contrastMode) return null;
+        const classes = eegData?.dataset?.classes || [];
+        const A = classes.find((c) => c.id === contrastOrder?.[0]);
+        const B = classes.find((c) => c.id === contrastOrder?.[1]);
+        if (!A || !B) return null;
+        return { a: A.color, b: B.color, labelA: A.label, labelB: B.label };
+    }, [contrastMode, contrastOrder, eegData]);
+
     const heatmapMaxAbs = useMemo(
         () => computeHeatmapMaxAbs(
             eegData, selectedClasses, selectedBand, contrastMode, contrastOrder,
@@ -282,6 +291,14 @@ export default function BrainViewer({
             mirror,
             contrastPhenomenon, classColors,
         );
+
+        configRef.current.contrast = (contrastMode && classColors)
+            ? {
+                phenomenon: contrastPhenomenon,
+                labelA: eegData?.dataset?.classes?.find((c) => c.id === contrastOrder?.[0])?.label,
+                labelB: eegData?.dataset?.classes?.find((c) => c.id === contrastOrder?.[1])?.label,
+            }
+            : null;
 
         if (result) {
             colorAttr.array.set(result.colors);
@@ -530,11 +547,18 @@ export default function BrainViewer({
                 const regionName = meta.idToName[regionId] || 'Unknown';
 
                 // Include ERD/ERS value when heatmap is active
-                const erdValue = heatmapValuesRef.current[regionId];
+                const hv = heatmapValuesRef.current[regionId];
                 let tooltipText = regionName;
-                if (erdValue !== undefined) {
-                    const sign = erdValue > 0 ? '+' : '';
-                    tooltipText += ` (${sign}${erdValue.toFixed(1)}%)`;
+                const cx = configRef.current.contrast;
+                if (cx && hv && typeof hv === 'object') {
+                    const { magnitude, winner } = contrastWinner(hv, cx.phenomenon);
+                    if (magnitude > 0) {
+                        const lbl = winner === 'a' ? cx.labelA : cx.labelB;
+                        tooltipText += ` — ${lbl} (${cx.phenomenon.toUpperCase()}) ${magnitude.toFixed(1)}%`;
+                    }
+                } else if (typeof hv === 'number') {
+                    const sign = hv > 0 ? '+' : '';
+                    tooltipText += ` (${sign}${hv.toFixed(1)}%)`;
                 }
 
                 if (tooltip) {
@@ -683,7 +707,22 @@ export default function BrainViewer({
                         </svg>
                     </button>
                 )}
-                {heatmapEnabled && !loading && (
+                {heatmapEnabled && !loading && contrastMode && classColorsLegend && (
+                    <div className="brain-legend brain-legend-contrast">
+                        <div className="brain-legend-contrast-title">
+                            {contrastPhenomenon === 'ers' ? 'ERS' : 'ERD'} contrast
+                        </div>
+                        <span className="brain-legend-item">
+                            <span className="brain-legend-dot" style={{ background: classColorsLegend.a }} />
+                            {classColorsLegend.labelA}
+                        </span>
+                        <span className="brain-legend-item">
+                            <span className="brain-legend-dot" style={{ background: classColorsLegend.b }} />
+                            {classColorsLegend.labelB}
+                        </span>
+                    </div>
+                )}
+                {heatmapEnabled && !loading && !contrastMode && (
                     <div className="brain-legend">
                         <div className="brain-legend-bar">
                             <div className="brain-legend-gradient" />
