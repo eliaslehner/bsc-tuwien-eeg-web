@@ -6,6 +6,7 @@ matplotlib>=3.7             # Plotting and visualisation
 mne==1.11.0                 # EEG/MEG processing
 nilearn>=0.13.0             # Neuroimaging machine learning
 nibabel>=5.3.3              # Neuroimaging file format support (NIfTI, GIFTI, etc.)
+antspyx==0.6.3              # ANTs registration (subject<->MNI atlas warp); optional — pipeline falls back to affine-only resample if absent
 
 # ── Image & 3D Processing ─────────────────────────────────────────────────────
 scikit-image>=0.25.2        # General image processing
