@@ -22,6 +22,10 @@ export default function Home() {
     const [erdThreshold, setErdThreshold] = useState(0);
     const [multiView, setMultiView] = useState(false);
     const [channelMode, setChannelMode] = useState('motor');
+    // Midline electrodes (Fz, Cz, Pz, …) sit over the longitudinal fissure, so
+    // their hemisphere is undetermined. When on, their value is applied to both
+    // the left and right mirror regions (no arbitrary L/R bias). On by default.
+    const [mirrorMidline, setMirrorMidline] = useState(true);
 
     useEffect(() => {
         fetch('/data/eeg_data.json')
@@ -139,13 +143,27 @@ export default function Home() {
                         Region: <strong>{activeRegion}</strong>
                     </span>
                 )}
-                <button className="help-btn" onClick={() => document.getElementById('help-modal').showModal()} title="Help / Theory">
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                        <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.5"/>
-                        <path d="M6 6a2 2 0 1 1 2.5 1.94c-.39.13-.5.44-.5.81V10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                        <circle cx="8" cy="12" r="0.75" fill="currentColor"/>
-                    </svg>
-                </button>
+                <div className="header-actions">
+                    <button
+                        className={`mirror-btn${mirrorMidline ? ' active' : ''}`}
+                        onClick={() => setMirrorMidline((m) => !m)}
+                        aria-pressed={mirrorMidline}
+                        title="Mirror midline electrodes (Fz, FCz, Cz, CPz, Pz, POz) onto both hemispheres. Their true side is undetermined, so their value is applied to the left and right mirror regions equally."
+                    >
+                        <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
+                            <path d="M8 1.5v13" stroke="currentColor" strokeWidth="1.3" strokeDasharray="2 1.6" strokeLinecap="round"/>
+                            <path d="M5 5.5 2 8l3 2.5M11 5.5l3 2.5-3 2.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                        <span>Mirror</span>
+                    </button>
+                    <button className="help-btn" onClick={() => document.getElementById('help-modal').showModal()} title="Help / Theory">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                            <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.5"/>
+                            <path d="M6 6a2 2 0 1 1 2.5 1.94c-.39.13-.5.44-.5.81V10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                            <circle cx="8" cy="12" r="0.75" fill="currentColor"/>
+                        </svg>
+                    </button>
+                </div>
             </header>
 
             <div className="content">
@@ -180,6 +198,7 @@ export default function Home() {
                     erdThreshold={erdThreshold}
                     multiView={multiView}
                     channelMode={channelMode}
+                    mirrorMidline={mirrorMidline}
                 />
             </div>
 
@@ -229,6 +248,7 @@ export default function Home() {
                             <li><strong>Contrast</strong> — Select exactly 2 classes to compute (Class 1) − (Class 2) subtraction.</li>
                             <li><strong>Threshold</strong> — Hide low-level noise to isolate active cortical areas.</li>
                             <li><strong>Multi-View</strong> — Split into Left Hemisphere, Top, and Right Hemisphere views.</li>
+                            <li><strong>Mirror</strong> — Midline electrodes (Fz, Cz, Pz…) sit over the fissure and overlie both hemispheres; their value is applied to the left and right mirror regions equally instead of an arbitrary side.</li>
                         </ul>
                     </div>
                 </div>

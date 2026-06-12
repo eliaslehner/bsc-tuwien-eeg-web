@@ -53,6 +53,59 @@ def collect_ply_files(directory):
     return sorted(glob.glob(os.path.join(directory, '*.ply')))
 
 
+# Debug comparison views, in display order (left -> right). The unregistered
+# pane is only present when registration ran (it is the old affine-only backup).
+COMPARE_VIEWS = [
+    ("pregap_mesh_ply_path", "1. PRE-GAP      (raw atlas, holes = dark grey)"),
+    ("unregistered_mesh_ply_path", "2. UNREGISTERED (affine-only resample — old / backup)"),
+    ("mapped_mesh_ply_path", "3. PRODUCTION   (registered atlas — what the frontend now loads)"),
+    ("template_mesh_ply_path", "4. REFERENCE    (Destrieux on MNI152 template = ground truth)"),
+]
+
+
+def compare_views(config, gap_factor=1.35):
+    """
+    Open one window showing the three debug meshes side by side, in the same
+    orientation, so pre-gap vs current isolates the gap-fill effect and
+    pre-gap vs reference isolates the registration (alignment) effect.
+    """
+    meshes = []
+    for attr, label in COMPARE_VIEWS:
+        path = getattr(config, attr)
+        if not os.path.isfile(path):
+            print(f"  [skip] missing {label} -> {path}")
+            continue
+        mesh = o3d.io.read_triangle_mesh(path)
+        if len(np.asarray(mesh.triangles)) == 0:
+            print(f"  [skip] no triangles in {path}")
+            continue
+        mesh.compute_vertex_normals()
+        meshes.append((mesh, label))
+
+    if not meshes:
+        print("No comparison meshes found. Run the pipeline first "
+              "(python -m backend.main).")
+        return
+
+    # Lay the meshes out left -> right along world X, centred on the origin.
+    spacing = gap_factor * max(
+        (m.get_axis_aligned_bounding_box().get_extent()[0] for m, _ in meshes),
+        default=200.0,
+    )
+    n = len(meshes)
+    print("\nComparison layout (left -> right):")
+    for i, (mesh, label) in enumerate(meshes):
+        c = mesh.get_center()
+        x = (i - (n - 1) / 2.0) * spacing
+        mesh.translate((x - c[0], -c[1], -c[2]))
+        print(f"  {label}")
+
+    print("\n  Each brain is in the same orientation (+X posterior, +Y superior,"
+          "\n  +Z anatomical right). Orbit to inspect g_front_sup along the top.")
+    visualize([m for m, _ in meshes],
+              window_name="Destrieux mapping — pre-gap | current | reference")
+
+
 def main():
     config = Config()
 
@@ -60,9 +113,15 @@ def main():
     parser.add_argument('files', nargs='*', help="Specific .ply file(s) to view")
     parser.add_argument('--dir', choices=['pointcloud', 'brainmapping', 'all'],
                         default='all', help="Which export directory to load from")
+    parser.add_argument('--compare', action='store_true',
+                        help="Show pre-gap | current | reference views side by side")
     parser.add_argument('--point-size', type=float, default=2.0,
                         help="Point size for point cloud rendering")
     args = parser.parse_args()
+
+    if args.compare:
+        compare_views(config)
+        return
 
     ply_paths = []
 

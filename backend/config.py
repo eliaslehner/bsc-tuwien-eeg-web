@@ -38,7 +38,14 @@ class Config:
     pointcloud_ply_filename: str = os.getenv('POINTCLOUD_PLY_FILENAME', 'brain_pointcloud.ply')
     mesh_ply_filename: str = os.getenv('MESH_PLY_FILENAME', 'brain_mesh.ply')
     mapped_mesh_ply_filename: str = os.getenv('MAPPED_MESH_PLY_FILENAME', 'brain_mesh_destrieux_mapped.ply')
+    # Debug comparison views (see backend/model/template.py and pointcloud.py)
+    pregap_mesh_ply_filename: str = os.getenv('PREGAP_MESH_PLY_FILENAME', 'brain_mesh_pregap_mapped.ply')
+    template_mesh_ply_filename: str = os.getenv('TEMPLATE_MESH_PLY_FILENAME', 'template_destrieux_mapped.ply')
+    # Backup of the old, unregistered (affine-only resample) production output.
+    # The registered output takes the canonical filenames so the frontend loads it.
+    unregistered_mesh_ply_filename: str = os.getenv('UNREGISTERED_MESH_PLY_FILENAME', 'brain_mesh_unregistered_mapped.ply')
     output_json_filename: str = os.getenv('OUTPUT_JSON_FILENAME', 'region_metadata.json')
+    unregistered_json_filename: str = os.getenv('UNREGISTERED_JSON_FILENAME', 'region_metadata.unregistered.json')
 
     # --- Point Cloud Parameters ---
     threshold: float = float(os.getenv('THRESHOLD', '0.05'))
@@ -54,6 +61,21 @@ class Config:
 
     # --- Export Options ---
     copy_mapped_mesh_to_frontend: bool = os.getenv('COPY_MAPPED_MESH_TO_FRONTEND', 'false').lower() in ('true', '1', 'yes')
+    # Force-build the MNI-template reference view even without the viewer.
+    # (The cheap pre-gap view is always exported; the template view is also
+    #  built automatically whenever show_viewer is on — see backend/main.py.)
+    export_debug_views: bool = os.getenv('EXPORT_DEBUG_VIEWS', 'false').lower() in ('true', '1', 'yes')
+
+    # --- Registration (proper subject<->MNI alignment, requires antspyx) ---
+    # On by default: the pipeline warps the atlas to the subject via ANTs and the
+    # registered result becomes the PRODUCTION SURFACE parcellation (canonical
+    # filenames the frontend loads); the old affine-only surface is kept as an
+    # *_unregistered backup. Set USE_REGISTRATION=false to skip (faster, but ships
+    # the mis-registered surface). Degrades gracefully if antspyx is missing.
+    # (Electrode->region mapping is independent — always done in native atlas space.)
+    use_registration: bool = os.getenv('USE_REGISTRATION', 'true').lower() in ('true', '1', 'yes')
+    # 'Affine' = fast global fix; 'SyN'/'SyNRA' = + nonlinear refinement.
+    registration_transform: str = os.getenv('REGISTRATION_TRANSFORM', 'Affine')
 
     # --- Device ---
     device: str = field(default_factory=lambda: _resolve_device(os.getenv('DEVICE', 'auto')))
@@ -94,6 +116,22 @@ class Config:
     @property
     def mapped_mesh_ply_path(self) -> str:
         return os.path.join(self.brainmapping_export_dir, self.mapped_mesh_ply_filename)
+
+    @property
+    def pregap_mesh_ply_path(self) -> str:
+        return os.path.join(self.brainmapping_export_dir, self.pregap_mesh_ply_filename)
+
+    @property
+    def template_mesh_ply_path(self) -> str:
+        return os.path.join(self.brainmapping_export_dir, self.template_mesh_ply_filename)
+
+    @property
+    def unregistered_mesh_ply_path(self) -> str:
+        return os.path.join(self.brainmapping_export_dir, self.unregistered_mesh_ply_filename)
+
+    @property
+    def unregistered_json_path(self) -> str:
+        return os.path.join(self.brainmapping_export_dir, self.unregistered_json_filename)
 
     @property
     def output_json_path(self) -> str:

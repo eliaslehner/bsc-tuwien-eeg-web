@@ -19,6 +19,7 @@ import { activeChannelsFor } from '../lib/eeg';
  */
 function computeRegionAveragesAtTime(
     eegData, selectedClasses, selectedBand, timeIndex, contrastMode, contrastOrder, channelMode,
+    mirror = null,
 ) {
     const bandData = eegData?.erd_ers?.[selectedBand];
     if (!bandData) return null;
@@ -56,12 +57,23 @@ function computeRegionAveragesAtTime(
 
     // Map channels to regions
     const regionBuckets = {};
+    const pushVal = (rid, value) => {
+        if (rid == null) return;
+        if (!regionBuckets[rid]) regionBuckets[rid] = [];
+        regionBuckets[rid].push(value);
+    };
     for (const [ch, value] of Object.entries(channelValues)) {
         const region = channelRegions?.[ch];
-        if (region) {
-            const rid = region.region_id;
-            if (!regionBuckets[rid]) regionBuckets[rid] = [];
-            regionBuckets[rid].push(value);
+        if (!region) continue;
+        const rid = region.region_id;
+        pushVal(rid, value);
+        // Midline electrodes (Fz, Cz, Pz, …) straddle the longitudinal fissure,
+        // so their hemisphere is undetermined. Apply their value to the mirror
+        // region too — this is in the bucket/average itself, so neither side is
+        // biased and both light up.
+        if (mirror?.enabled && mirror.midline?.has(ch)) {
+            const mid = mirror.map?.[rid];
+            if (mid != null && mid !== rid) pushVal(mid, value);
         }
     }
 
@@ -74,7 +86,7 @@ function computeRegionAveragesAtTime(
 }
 
 function computeHeatmapMaxAbs(
-    eegData, selectedClasses, selectedBand, contrastMode, contrastOrder, channelMode,
+    eegData, selectedClasses, selectedBand, contrastMode, contrastOrder, channelMode, mirror,
 ) {
     const bandData = eegData?.erd_ers?.[selectedBand];
     const times = bandData?.times || [];
@@ -90,6 +102,7 @@ function computeHeatmapMaxAbs(
             contrastMode,
             contrastOrder,
             channelMode,
+            mirror,
         );
         if (!regionAvg) continue;
 
@@ -103,7 +116,7 @@ function computeHeatmapMaxAbs(
 
 function computeHeatmapColors(
     vertexRegionIds, eegData, selectedClasses, selectedBand, timeIndex,
-    contrastMode, contrastOrder, erdThreshold, channelMode, maxAbs,
+    contrastMode, contrastOrder, erdThreshold, channelMode, maxAbs, mirror,
 ) {
     if (!vertexRegionIds?.length) return null;
 
@@ -115,6 +128,7 @@ function computeHeatmapColors(
         contrastMode,
         contrastOrder,
         channelMode,
+        mirror,
     );
 
     const allVals = Object.values(regionAvg || {});
@@ -173,10 +187,14 @@ export default function BrainViewer({
     erdThreshold,
     multiView,
     channelMode,
+    mirrorMidline,
 }) {
     const containerRef = useRef(null);
     const tooltipRef = useRef(null);
     const [loading, setLoading] = useState(true);
+    // Mirror metadata derived from region_metadata.json: region_id -> mirror
+    // region_id (L<->R pairs), and the set of midline electrode names.
+    const [mirrorMeta, setMirrorMeta] = useState(null);
 
     const meshRef = useRef(null);
     const metaRef = useRef(null);
@@ -190,6 +208,15 @@ export default function BrainViewer({
         configRef.current.multiView = multiView;
     }, [multiView]);
 
+    const mirror = useMemo(
+        () => ({
+            enabled: !!mirrorMidline,
+            map: mirrorMeta?.map,
+            midline: mirrorMeta?.midline,
+        }),
+        [mirrorMidline, mirrorMeta],
+    );
+
     const heatmapMaxAbs = useMemo(
         () => computeHeatmapMaxAbs(
             eegData,
@@ -198,8 +225,9 @@ export default function BrainViewer({
             contrastMode,
             contrastOrder,
             channelMode,
+            mirror,
         ),
-        [eegData, selectedClasses, selectedBand, contrastMode, contrastOrder, channelMode],
+        [eegData, selectedClasses, selectedBand, contrastMode, contrastOrder, channelMode, mirror],
     );
 
     // ---- Heatmap effect ----
@@ -239,6 +267,7 @@ export default function BrainViewer({
             erdThreshold,
             channelMode,
             heatmapMaxAbs,
+            mirror,
         );
 
         if (result) {
@@ -255,7 +284,7 @@ export default function BrainViewer({
             heatmapValuesRef.current = {};
         }
         colorAttr.needsUpdate = true;
-    }, [loading, heatmapEnabled, eegData, selectedClasses, selectedBand, currentTimeIndex, contrastMode, contrastOrder, erdThreshold, channelMode, heatmapMaxAbs]);
+    }, [loading, heatmapEnabled, eegData, selectedClasses, selectedBand, currentTimeIndex, contrastMode, contrastOrder, erdThreshold, channelMode, heatmapMaxAbs, mirror]);
 
     // ---- Three.js setup (once) ----
     useEffect(() => {
@@ -326,11 +355,34 @@ export default function BrainViewer({
                 for (const region of data.regions) {
                     idToName[region.id] = region.name;
                 }
+
+                // L<->R mirror map: pair regions sharing a base name ("L X"/"R X").
+                const byBase = {};
+                for (const region of data.regions) {
+                    const m = /^([LR]) (.+)$/.exec(region.name);
+                    if (m) (byBase[m[2]] ||= {})[m[1]] = region.id;
+                }
+                const mirrorMap = {};
+                for (const base in byBase) {
+                    const { L, R } = byBase[base];
+                    if (L != null && R != null) {
+                        mirrorMap[L] = R;
+                        mirrorMap[R] = L;
+                    }
+                }
+
+                // Midline electrodes: scalp x ~ 0 (Fz, FCz, Cz, CPz, Pz, POz …).
+                const midline = new Set();
+                for (const e of data.electrodes || []) {
+                    if (e.mni && Math.abs(e.mni[0]) < 10) midline.add(e.name);
+                }
+
                 metaRef.current = {
                     idToName,
                     vertexRegionIds: data.vertex_region_ids || [],
                     regions: data.regions,
                 };
+                setMirrorMeta({ map: mirrorMap, midline });
             });
 
         // --- Multi-View Cameras ---
@@ -407,10 +459,10 @@ export default function BrainViewer({
             // Mesh axis convention: -X anterior, +X posterior, +Y superior,
             // -Z anatomical left, +Z anatomical right. Verified empirically:
             // C3 → "L G_precentral" sits on the -Z side, C4 → "R G_precentral"
-            // on the +Z side. All three multi-view panes mirror X in projection
-            // for neurological convention: top view shows anatomical left on
-            // screen-left, side views show anterior on the outer edge of each
-            // pane (screen-left for the left pane, screen-right for the right).
+            // on the +Z side. The left/right SIDE panes mirror X in projection
+            // (anterior on the outer edge of each pane). The TOP pane is NOT
+            // mirrored, so its left/right matches the single (free-orbit) view and
+            // the hover label matches the hemisphere actually drawn there.
             // Multi-view positions are recomputed per frame to fit each pane's aspect.
             geometry.computeBoundingSphere();
             brainRadius = geometry.boundingSphere?.radius
@@ -524,14 +576,15 @@ export default function BrainViewer({
                 renderer.setScissor(0, 0, w3, h);
                 renderer.render(scene, leftCamera);
 
-                // Top View: view dir -Y, anterior at top, anatomical left on screen-left.
+                // Top View: view dir -Y, anterior at top. NOT mirrored — renders the
+                // true 3D geometry so its left/right matches the single (free-orbit)
+                // view, and the hover label matches the hemisphere actually drawn.
                 const aspectT = w3 / h;
                 const distT = fitDistance(aspectT);
                 topCamera.position.set(centerPoint.x, centerPoint.y + distT, centerPoint.z);
                 topCamera.lookAt(centerPoint);
                 topCamera.aspect = aspectT;
                 topCamera.updateProjectionMatrix();
-                mirrorProjectionX(topCamera);
                 renderer.setViewport(w3, 0, w3, h);
                 renderer.setScissor(w3, 0, w3, h);
                 renderer.render(scene, topCamera);

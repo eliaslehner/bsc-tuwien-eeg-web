@@ -66,27 +66,46 @@ def color_vertices_by_region(region_ids, id_to_palette_idx, palette):
     return palette[palette_indices]
 
 
-def generate_and_export(config, masked_volume, atlas_volume, id_to_palette_idx, palette):
+def _assemble_and_export(verts_centered, faces_flipped, colors, out_path):
+    """Build an Open3D mesh from shared geometry + per-view colours and write it."""
+    mesh = o3d.geometry.TriangleMesh()
+    mesh.vertices = o3d.utility.Vector3dVector(verts_centered)
+    mesh.triangles = o3d.utility.Vector3iVector(faces_flipped)
+    mesh.vertex_colors = o3d.utility.Vector3dVector(colors)
+    mesh.compute_vertex_normals()
+    o3d.io.write_triangle_mesh(out_path, mesh)
+    return mesh
+
+
+def generate_and_export(config, masked_volume, atlas_production, atlas_volume_raw,
+                        id_to_palette_idx, palette, atlas_unregistered=None):
     """
     Full mesh generation pipeline using Marching Cubes.
 
-    1. Extract isosurface from masked T1w volume
-    2. Optionally decimate to target face count
-    3. Assign region IDs per-vertex from atlas (forward carry)
-    4. Colour vertices by region
-    5. Centre and flip Y
-    6. Export mapped PLY
+    One isosurface is extracted and shared between the coloured exports so they
+    are geometrically identical and differ ONLY in labelling:
+
+      * production view  — region IDs from *atlas_production* (the registered,
+        gap-filled atlas when registration ran, else the affine-only one),
+        plus mesh-neighbour fill. Written to the canonical filename the frontend
+        loads.
+      * pre-gap view     — region IDs from the RAW (un-gap-filled) atlas, no fill.
+        Unlabelled vertices stay dark grey, so holes + raw placement are visible.
+      * unregistered view (optional) — region IDs from the old affine-only,
+        gap-filled atlas. Same geometry; kept as a backup / "before" comparison.
 
     Returns
     -------
-    vertex_region_ids : list[int] — per-vertex region IDs for JSON export
+    (production_ids, unregistered_ids) : (list[int], list[int] | None)
+        production_ids feed region_metadata.json; unregistered_ids feed the
+        backup region_metadata when registration ran.
     """
     os.makedirs(config.brainmapping_export_dir, exist_ok=True)
     mapped_path = config.mapped_mesh_ply_path
 
-    # ── Marching Cubes isosurface ──
+    # ── Marching Cubes isosurface (shared by every view) ──
     print("  Running Marching Cubes...")
-    verts, faces, normals, _ = marching_cubes(
+    verts, faces, _, _ = marching_cubes(
         masked_volume, level=config.mc_level, step_size=config.mc_step_size,
     )
     print(f"  Isosurface: {len(verts):,} vertices, {len(faces):,} faces")
@@ -106,42 +125,48 @@ def generate_and_export(config, masked_volume, atlas_volume, id_to_palette_idx, 
     else:
         verts = np.asarray(mesh.vertices)
 
-    # ── Forward-carry region IDs (in voxel space — accurate) ──
-    print("  Assigning region IDs per vertex...")
-    vertex_region_ids = assign_vertex_region_ids(verts, atlas_volume)
+    decimated_faces = np.asarray(mesh.triangles)
 
-    n_unlabelled = int(np.sum(vertex_region_ids == 0))
-    if n_unlabelled > 0:
-        print(f"  Filling {n_unlabelled:,} unlabelled vertices from mesh neighbours...")
-        vertex_region_ids = fill_unlabelled_from_neighbours(
-            vertex_region_ids, np.asarray(mesh.triangles)
-        )
-        n_still = int(np.sum(vertex_region_ids == 0))
-        if n_still > 0:
-            print(f"  Warning: {n_still:,} vertices still unlabelled (isolated)")
+    def labelled_colours(atlas, fill=True):
+        ids = assign_vertex_region_ids(verts, atlas)
+        if fill:
+            n0 = int(np.sum(ids == 0))
+            if n0 > 0:
+                ids = fill_unlabelled_from_neighbours(ids, decimated_faces)
+        return ids, color_vertices_by_region(ids, id_to_palette_idx, palette)
 
-    colors = color_vertices_by_region(vertex_region_ids, id_to_palette_idx, palette)
+    # ── Production view (canonical — what the frontend loads) ──
+    print("  Assigning region IDs per vertex (production view)...")
+    prod_ids, prod_colors = labelled_colours(atlas_production, fill=True)
 
-    # ── Centre + flip Y ──
+    # ── Pre-gap view: raw atlas labels, NO filling ──
+    pregap_ids, pregap_colors = labelled_colours(atlas_volume_raw, fill=False)
+    n_pregap_lab = int(np.sum(pregap_ids > 0))
+    print(f"  Pre-gap view: {100 * n_pregap_lab / len(pregap_ids):.1f}% of "
+          f"vertices labelled by the raw atlas ({len(pregap_ids) - n_pregap_lab:,} holes)")
+
+    # ── Shared centre + flip Y (faces flipped once to keep normals outward) ──
     centroid = verts.mean(axis=0)
     verts_centered = verts - centroid
     verts_centered[:, 1] = -verts_centered[:, 1]
+    faces_flipped = decimated_faces[:, ::-1]
 
-    # Flip face winding to compensate for Y-axis flip (preserves outward normals)
-    faces_flipped = np.asarray(mesh.triangles)[:, ::-1]
-
-    # ── Final mesh assembly ──
-    mesh.vertices = o3d.utility.Vector3dVector(verts_centered)
-    mesh.triangles = o3d.utility.Vector3iVector(faces_flipped)
-    mesh.vertex_colors = o3d.utility.Vector3dVector(colors)
-
-    # Recompute normals after the manual winding flip and coordinate transform.
-    mesh.compute_vertex_normals()
-
-    # ── Export ──
-    o3d.io.write_triangle_mesh(mapped_path, mesh)
-    print(f"  Exported mapped mesh -> {mapped_path}")
+    # ── Export production + pre-gap ──
+    _assemble_and_export(verts_centered, faces_flipped, prod_colors, mapped_path)
+    print(f"  Exported production view -> {mapped_path}")
     print(f"    {len(verts_centered):,} vertices, {len(faces_flipped):,} faces")
+
+    pregap_path = config.pregap_mesh_ply_path
+    _assemble_and_export(verts_centered, faces_flipped, pregap_colors, pregap_path)
+    print(f"  Exported pre-gap view    -> {pregap_path}")
+
+    # ── Export unregistered backup (optional, same geometry, old labels) ──
+    unreg_ids = None
+    if atlas_unregistered is not None:
+        unreg_ids, unreg_colors = labelled_colours(atlas_unregistered, fill=True)
+        unreg_path = config.unregistered_mesh_ply_path
+        _assemble_and_export(verts_centered, faces_flipped, unreg_colors, unreg_path)
+        print(f"  Exported unregistered    -> {unreg_path} (backup)")
 
     if config.copy_mapped_mesh_to_frontend:
         frontend_dir = config.frontend_data_dir
@@ -151,4 +176,4 @@ def generate_and_export(config, masked_volume, atlas_volume, id_to_palette_idx, 
         print(f"  Copied to frontend -> {dest}")
 
     print("  Mesh generation done.")
-    return [int(r) for r in vertex_region_ids]
+    return [int(r) for r in prod_ids], (None if unreg_ids is None else [int(r) for r in unreg_ids])
