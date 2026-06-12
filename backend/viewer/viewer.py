@@ -53,11 +53,13 @@ def collect_ply_files(directory):
     return sorted(glob.glob(os.path.join(directory, '*.ply')))
 
 
-# Debug comparison views, in display order (left -> right) with screen colours.
+# Debug comparison views, in display order (left -> right). The registered view
+# is only present when registration ran (antspyx + use_registration/show_viewer).
 COMPARE_VIEWS = [
-    ("pregap_mesh_ply_path", "1. PRE-GAP  (raw atlas, holes = dark grey)"),
-    ("mapped_mesh_ply_path", "2. CURRENT  (gap-filled — what the frontend shows)"),
-    ("template_mesh_ply_path", "3. REFERENCE (Destrieux on MNI152 template)"),
+    ("pregap_mesh_ply_path", "1. PRE-GAP    (raw atlas, holes = dark grey)"),
+    ("mapped_mesh_ply_path", "2. CURRENT    (affine-only resample — what the frontend shows)"),
+    ("registered_mesh_ply_path", "3. REGISTERED (ANTs-warped atlas — proper alignment)"),
+    ("template_mesh_ply_path", "4. REFERENCE  (Destrieux on MNI152 template = ground truth)"),
 ]
 
 

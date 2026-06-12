@@ -41,6 +41,7 @@ class Config:
     # Debug comparison views (see backend/model/template.py and pointcloud.py)
     pregap_mesh_ply_filename: str = os.getenv('PREGAP_MESH_PLY_FILENAME', 'brain_mesh_pregap_mapped.ply')
     template_mesh_ply_filename: str = os.getenv('TEMPLATE_MESH_PLY_FILENAME', 'template_destrieux_mapped.ply')
+    registered_mesh_ply_filename: str = os.getenv('REGISTERED_MESH_PLY_FILENAME', 'brain_mesh_registered_mapped.ply')
     output_json_filename: str = os.getenv('OUTPUT_JSON_FILENAME', 'region_metadata.json')
 
     # --- Point Cloud Parameters ---
@@ -61,6 +62,13 @@ class Config:
     # (The cheap pre-gap view is always exported; the template view is also
     #  built automatically whenever show_viewer is on — see backend/main.py.)
     export_debug_views: bool = os.getenv('EXPORT_DEBUG_VIEWS', 'false').lower() in ('true', '1', 'yes')
+
+    # --- Registration (proper subject<->MNI alignment, requires antspyx) ---
+    # When on (or when show_viewer is on), the pipeline also warps the atlas to
+    # the subject via ANTs and builds a 4th "registered" comparison view.
+    use_registration: bool = os.getenv('USE_REGISTRATION', 'false').lower() in ('true', '1', 'yes')
+    # 'Affine' = fast global fix; 'SyN'/'SyNRA' = + nonlinear refinement.
+    registration_transform: str = os.getenv('REGISTRATION_TRANSFORM', 'Affine')
 
     # --- Device ---
     device: str = field(default_factory=lambda: _resolve_device(os.getenv('DEVICE', 'auto')))
@@ -109,6 +117,10 @@ class Config:
     @property
     def template_mesh_ply_path(self) -> str:
         return os.path.join(self.brainmapping_export_dir, self.template_mesh_ply_filename)
+
+    @property
+    def registered_mesh_ply_path(self) -> str:
+        return os.path.join(self.brainmapping_export_dir, self.registered_mesh_ply_filename)
 
     @property
     def output_json_path(self) -> str:

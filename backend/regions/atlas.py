@@ -70,11 +70,15 @@ def registration_coverage(atlas_volume_raw, brain_mask):
     coverage = 100 * n_lab_inside / n_brain if n_brain else 0.0
     outside_frac = 100 * n_lab_outside / n_lab_total if n_lab_total else 0.0
 
-    print(f"    Registration check: {coverage:.1f}% of brain voxels labelled, "
-          f"{outside_frac:.1f}% of atlas labels fall OUTSIDE the brain mask")
-    if outside_frac > 15 or coverage < 60:
-        print("    ^ High outside-mask / low coverage => subject is mis-aligned "
-              "to the atlas (registration), which the gap-fill then smears.")
+    print(f"    Registration check: {coverage:.1f}% of brain voxels labelled "
+          f"(cortical ribbon), {outside_frac:.1f}% of atlas labels fall OUTSIDE "
+          f"the brain mask")
+    # The discriminating signal is outside-mask %, not raw coverage: the
+    # volumetric Destrieux atlas only labels the cortical ribbon (~40% of the
+    # brain), so low coverage is normal even when alignment is perfect.
+    if outside_frac > 15:
+        print("    ^ Many labels outside the brain => subject is mis-aligned to "
+              "the atlas (registration); gap-fill then smears the misplaced labels.")
     return {
         "coverage_pct": coverage,
         "outside_frac_pct": outside_frac,

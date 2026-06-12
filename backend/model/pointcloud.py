@@ -78,18 +78,19 @@ def _assemble_and_export(verts_centered, faces_flipped, colors, out_path):
 
 
 def generate_and_export(config, masked_volume, atlas_volume, atlas_volume_raw,
-                        id_to_palette_idx, palette):
+                        id_to_palette_idx, palette, atlas_volume_registered=None):
     """
     Full mesh generation pipeline using Marching Cubes.
 
-    One isosurface is extracted and shared between two coloured exports so they
+    One isosurface is extracted and shared between the coloured exports so they
     are geometrically identical and differ ONLY in labelling:
 
-      * pre-gap view  — region IDs sampled from the RAW (un-gap-filled) atlas,
-        with no neighbour fill. Unlabelled vertices stay dark grey, so the holes
-        and the raw label placement are visible.
-      * current view  — region IDs from the gap-filled atlas, plus mesh-neighbour
+      * pre-gap view   — region IDs from the RAW (un-gap-filled) atlas, no fill.
+        Unlabelled vertices stay dark grey, so holes + raw placement are visible.
+      * current view   — region IDs from the gap-filled atlas, plus mesh-neighbour
         fill. This is the production mesh the frontend loads.
+      * registered view (optional) — region IDs from the ANTs-registered,
+        gap-filled atlas. Same geometry, correctly-aligned labels.
 
     Returns
     -------
@@ -158,6 +159,15 @@ def generate_and_export(config, masked_volume, atlas_volume, atlas_volume_raw,
     pregap_path = config.pregap_mesh_ply_path
     _assemble_and_export(verts_centered, faces_flipped, pregap_colors, pregap_path)
     print(f"  Exported pre-gap view  -> {pregap_path}")
+
+    # ── Export registered view (optional, same geometry, fixed labels) ──
+    if atlas_volume_registered is not None:
+        reg_ids = assign_vertex_region_ids(verts, atlas_volume_registered)
+        reg_ids = fill_unlabelled_from_neighbours(reg_ids, decimated_faces)
+        reg_colors = color_vertices_by_region(reg_ids, id_to_palette_idx, palette)
+        reg_path = config.registered_mesh_ply_path
+        _assemble_and_export(verts_centered, faces_flipped, reg_colors, reg_path)
+        print(f"  Exported registered view -> {reg_path}")
 
     if config.copy_mapped_mesh_to_frontend:
         frontend_dir = config.frontend_data_dir

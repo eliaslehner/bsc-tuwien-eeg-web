@@ -54,6 +54,17 @@ def run(config=None):
     registration_coverage(atlas_volume_raw, brain_mask)
     atlas_volume, _ = gap_fill_labels(atlas_volume_raw, brain_mask)
 
+    # Optional: proper subject<->MNI registration (warp atlas to subject) for
+    # the comparison's 4th "registered" view. Built when forced or when the
+    # viewer will show it. Degrades gracefully if antspyx is not installed.
+    atlas_volume_registered = None
+    if config.use_registration or config.show_viewer:
+        from backend.regions.registration import register_atlas_to_subject
+        reg_raw = register_atlas_to_subject(config, brain_nii)
+        if reg_raw is not None:
+            registration_coverage(reg_raw, brain_mask)
+            atlas_volume_registered, _ = gap_fill_labels(reg_raw, brain_mask)
+
     # ── Step 3: Build region palette ──
     print("\n[3/6] Building region palette")
     sorted_ids, full_names, palette, id_to_palette_idx = build_region_palette(names_map)
@@ -64,6 +75,7 @@ def run(config=None):
     vertex_region_ids = generate_and_export(
         config, masked_volume, atlas_volume, atlas_volume_raw,
         id_to_palette_idx, palette,
+        atlas_volume_registered=atlas_volume_registered,
     )
     # The pre-gap + current subject views are always exported above. The
     # MNI-template reference view is more expensive (separate isosurface), so
