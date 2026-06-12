@@ -13,6 +13,7 @@
 10. [Pipeline Entry Point — `main.py`](#10-pipeline-entry-point--mainpy)
 11. [Frontend — Browser 3D Brain Viewer](#11-frontend--browser-3d-brain-viewer)
 12. [EEG Processing — `eeg/`](#12-eeg-processing--eeg)
+13. [Registration, Comparison Views & Electrode Fix](#13-registration-comparison-views--electrode-fix)
 
 ---
 
@@ -193,6 +194,8 @@ The main pipeline function. Steps:
 9. **Export** the mapped PLY and optionally copy it to the frontend's `public/data/` directory.
 10. **Return** the per-vertex region ID list for the electrode pipeline to reuse.
 
+> **Updated 12.06.2026 (see §13):** `generate_and_export` now takes the **production** atlas plus an optional **unregistered** atlas and returns `(production_ids, unregistered_ids)`. A single Marching-Cubes isosurface is shared between the production, pre-gap and (optional) unregistered-backup colour exports.
+
 ### Design Decisions
 
 | Decision | Rationale |
@@ -212,6 +215,8 @@ The main pipeline function. Steps:
 ### Purpose
 
 Extracted from `BrainRegions.py` and `ElectrodeMapping.py`. Contains the Destrieux atlas fetching/resampling logic and the volumetric gap-fill. Functionally identical to the old code — just moved into its own module.
+
+> **Updated 12.06.2026 (see §13):** `resample_to_img` aligns the atlas by affine only — there is no registration. For a native-space subject this misplaces the labels (the root cause of the `g_front_sup` cross-midline bleed). The module gained `registration_coverage` and `fetch_destrieux_native`, and a proper subject↔MNI registration now lives in `regions/registration.py`.
 
 ### Key Functions
 
@@ -268,6 +273,8 @@ New orchestrator that processes all PLY files from the pointcloud export directo
 ### Purpose
 
 Contains the EEG electrode-to-region mapping logic from the old `ElectrodeMapping.py`, plus the JSON builder. The core algorithm is unchanged — ray-casting from scalp inward toward the volume centre to find the nearest cortical region beneath each electrode.
+
+> **Updated 12.06.2026 (see §13):** the electrode mapping was rewritten. Electrodes are now mapped in **native Destrieux atlas space** (not the mis-registered subject grid) and **projected radially onto the nearest cortical crown** instead of ray-casting to the volume centre — the old approach placed Cz in the frontal lobe. `map_electrodes_to_regions` and `run_electrode_pipeline` signatures changed accordingly.
 
 ### Key Functions
 
@@ -331,6 +338,8 @@ Single-command entry point that runs the entire brain visualisation pipeline in 
 5. **Electrode mapping & JSON export** — maps electrodes, reuses the pre-computed vertex region IDs, and writes `region_metadata.json`. The return value (electrode mappings) is captured and passed forward to step 6.
 6. **EEG processing & export** — loads GDF data (or generates synthetic data), preprocesses, computes ERD/ERS, and writes `eeg_data.json`. Receives the electrode mappings from step 5 so it can build the channel-to-region mapping for the frontend heatmap.
 7. **Optional viewer** — if `SHOW_VIEWER=true` in `.env`, launches the Open3D viewer.
+
+> **Updated 12.06.2026 (see §13):** step 2 now also runs subject↔MNI registration (when `use_registration`, default on) and the registered atlas becomes the production atlas driving steps 4–6; the old affine-only output is written as `*_unregistered` backups. Electrodes (step 5) are mapped in native atlas space. Step 7 opens the side-by-side `compare_views` instead of the plain viewer.
 
 ### Design Decisions
 
@@ -754,3 +763,49 @@ The mu (8–13 Hz) and beta (13–30 Hz) band ranges are defined as Python tuple
 | **Synthetic data fallback** | Lets the frontend be developed and tested without requiring the actual GDF files. The synthetic patterns are spatially and temporally realistic enough to verify the heatmap and timeline logic. |
 | **Downsampling to 90 bins** | Keeps the JSON under 130 KB (22 channels × 90 times × 4 classes × 2 bands ≈ 15,840 values). The full 1125-sample resolution is unnecessary for the visualisation. |
 | **Channel-to-region mapping from electrode pipeline** | Reuses the existing electrode → Destrieux region assignment rather than re-deriving it. Ensures consistency between the electrode metadata and the EEG heatmap. |
+
+---
+
+## 13. Registration, Comparison Views & Electrode Fix
+
+### Purpose
+
+Fixes a region-misplacement artefact — the superior frontal gyrus `g_front_sup` appeared shifted across the cortical midline into the opposite hemisphere — and ships the corrected mapping to the frontend. Also adds a set of debug comparison views and a frontend "Mirror" toggle. This section supersedes the relevant parts of §4, §5, §8 and §10.
+
+### Root cause
+
+`fetch_and_resample_atlas` (§5) aligns the MNI152 Destrieux atlas to the subject with `nilearn.image.resample_to_img`, which uses **only the stored NIfTI affines — there is no spatial registration/warp**. The NFBS subject (`A00063008`) is in native scanner space, ~36 mm anterior of MNI, so the atlas lands misaligned: only ~28 % of brain voxels are labelled and **~51 % of atlas labels fall outside the brain mask**. The volumetric gap-fill then nearest-neighbour-smears those misplaced labels across the cortex, which is what pushes `g_front_sup` over the midline. The same false "native == MNI" assumption corrupts electrode placement (`mni_to_voxel`), e.g. Cz landed in the frontal lobe. Verified with `backend/testing/diag_registration.py`.
+
+### New / changed modules
+
+| Module | What |
+|---|---|
+| `regions/registration.py` *(new)* | `register_atlas_to_subject` — registers the MNI152 template to the subject with **ANTs (`antspyx`)** and warps the atlas into subject voxel space, preserving the individual brain shape (only the labels move). `type_of_transform='Affine'` (default) or `'SyN'`/`'SyNRA'`. Graceful no-op if `antspyx` is absent. |
+| `model/template.py` *(new)* | `generate_template_view` — renders the (gap-filled) Destrieux atlas on the MNI152 template brain it was defined on, as a ground-truth reference, oriented to match the subject mesh convention. |
+| `regions/atlas.py` | `registration_coverage` — prints a per-run health line (% of brain labelled, % of labels outside the mask; warns when outside-mask > 15 %). `fetch_destrieux_native` — returns the atlas in its own MNI space + affine + names, for electrode mapping. |
+| `testing/diag_registration.py` *(new)* | Stand-alone diagnostic quantifying the misalignment (COM offset, outside-mask %, per-region world-x, hemisphere check). |
+| `model/pointcloud.py` (§4) | `generate_and_export` takes the **production** atlas + optional **unregistered** atlas and returns `(production_ids, unregistered_ids)`; one isosurface is shared between the production, pre-gap and unregistered-backup exports. |
+| `electrode/mapping.py` (§8) | `map_electrodes_to_regions(channel_coords, atlas_volume, affine, names_map)` — electrodes mapped in **native atlas space** and **projected radially** onto the nearest cortical crown (via a thin nearest-cortex shell), replacing ray-cast-to-centre. `run_electrode_pipeline` gains `output_path`, `electrode_atlas`, `electrode_affine`, `electrode_names`. |
+| `viewer/viewer.py` (§9) | `compare_views` + `--compare` — opens the debug meshes side by side (pre-gap \| unregistered \| production \| reference) in one window. |
+| `main.py` (§10) | Registration step; `atlas_production = registered or affine-only`; production drives the canonical mesh/JSON/electrodes; old affine-only output written as `*_unregistered` backups. |
+| `config.py` (§2) | `use_registration` (default **true**), `registration_transform`; `unregistered`/`pregap`/`template` mesh + json filenames and `*_path` properties. |
+
+### Production flip & backups
+
+When registration succeeds, the registered atlas becomes the **production** parcellation: the canonical `brain_mesh_destrieux_mapped.ply`, `region_metadata.json` and `eeg_data.json` the frontend loads are regenerated from it (no frontend code change — same file shapes, corrected values). The old affine-only output is kept for comparison as `brain_mesh_unregistered_mapped.ply` and `region_metadata.unregistered.json` (gitignored, in the export dir). The pre-gap and MNI-template reference meshes are likewise gitignored debug artefacts.
+
+### Frontend — "Mirror" toggle
+
+Midline electrodes (Fz, FCz, Cz, CPz, Pz, POz; scalp x ≈ 0) straddle the longitudinal fissure, so their hemisphere is inherently undetermined in the lateralised atlas. A header toggle (`page.js`, **on by default**, beside the help button) applies a midline electrode's value to **both** the left and right mirror regions. The mirroring is done in the region averaging itself — `computeRegionAveragesAtTime` in `BrainViewer.jsx` pushes the value into both region buckets — so neither hemisphere is biased and the max-abs normalisation stays consistent. The L↔R region pairing (by base name) and the midline-electrode set (by electrode `mni[0]`) are derived from `region_metadata.json`.
+
+### Design Decisions
+
+| Decision | Rationale |
+|---|---|
+| **ANTs (`antspyx`) only; Affine→SyN one flag** | One dependency covers both affine and nonlinear. Affine alone drops outside-mask labels 50.8 % → 1.4 % and resolves the cross-midline bleed; SyN tightens the cortical fit to ~0.3 % with the same placement. |
+| **Warp atlas → subject (not subject → MNI)** | Preserves the individual brain shape from Marching Cubes; only the labels move. Keeps the Destrieux + stripped-model + Marching-Cubes design intact. |
+| **Registered = production, affine-only = backup** | The frontend auto-loads the fixed mapping under the canonical filenames; the old output stays on disk for reproducible before/after thesis figures. |
+| **Electrodes in native atlas space + radial projection** | Electrode→region is an atlas-space question (montage and atlas are both MNI/head-space; the subject brain is only the canvas). Radial projection onto the cortical crown fixes the central/midline electrodes the old ray-cast dragged into deep/medial structures. |
+| **Mirror in the average, not the colour** | Pushing the midline value into both region buckets removes the arbitrary L/R bias and keeps normalisation consistent — it is a calculation change, not a recolour. |
+
+> **Electrode caveats (kept in code + docs):** MNE `standard_1020` positions are scalp-surface points (~10–25 mm outside the cortical ribbon), not cortical MNI. A truly midline electrode's L-vs-R hemisphere is inherently ambiguous — the region (e.g. paracentral) is meaningful, the side is not; present midline assignments with that caveat (the Mirror toggle is the visualisation mitigation).
