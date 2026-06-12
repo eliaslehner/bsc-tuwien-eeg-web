@@ -19,6 +19,7 @@ export default function Home() {
     const [selectedRuns, setSelectedRuns] = useState(new Set([0, 1, 2, 3, 4, 5]));
     const [contrastMode, setContrastMode] = useState(false);
     const [contrastOrder, setContrastOrder] = useState([null, null]);
+    const [contrastPhenomenon, setContrastPhenomenon] = useState('erd'); // 'erd' | 'ers'
     const [erdThreshold, setErdThreshold] = useState(0);
     const [multiView, setMultiView] = useState(false);
     const [channelMode, setChannelMode] = useState('motor');
@@ -181,6 +182,8 @@ export default function Home() {
                     setContrastMode={setContrastMode}
                     contrastOrder={contrastOrder}
                     setContrastOrder={setContrastOrder}
+                    contrastPhenomenon={contrastPhenomenon}
+                    setContrastPhenomenon={setContrastPhenomenon}
                     erdThreshold={erdThreshold}
                     setErdThreshold={setErdThreshold}
                     multiView={multiView}
@@ -195,6 +198,7 @@ export default function Home() {
                     heatmapEnabled={heatmapEnabled}
                     contrastMode={contrastMode}
                     contrastOrder={contrastOrder}
+                    contrastPhenomenon={contrastPhenomenon}
                     erdThreshold={erdThreshold}
                     multiView={multiView}
                     channelMode={channelMode}

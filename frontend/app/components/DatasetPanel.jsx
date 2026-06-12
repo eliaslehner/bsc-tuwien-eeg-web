@@ -16,6 +16,8 @@ export default function DatasetPanel({
     setContrastMode,
     contrastOrder,
     setContrastOrder,
+    contrastPhenomenon,
+    setContrastPhenomenon,
     erdThreshold,
     setErdThreshold,
     multiView,
@@ -183,6 +185,18 @@ export default function DatasetPanel({
                                 <path d="M1 4h10M1 8h10"/>
                             </svg>
                         </button>
+                    </div>
+                )}
+                {contrastMode && (
+                    <div className="erd-ers-toggle" role="group" aria-label="Contrast phenomenon">
+                        <button
+                            className={contrastPhenomenon === 'erd' ? 'active' : ''}
+                            onClick={() => setContrastPhenomenon('erd')}
+                        >ERD</button>
+                        <button
+                            className={contrastPhenomenon === 'ers' ? 'active' : ''}
+                            onClick={() => setContrastPhenomenon('ers')}
+                        >ERS</button>
                     </div>
                 )}
             </div>

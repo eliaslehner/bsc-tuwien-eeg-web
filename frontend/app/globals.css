@@ -1243,4 +1243,27 @@ body {
     }
 }
 
+/* === ERD/ERS contrast toggle === */
+.erd-ers-toggle {
+    display: flex;
+    gap: 0;
+    margin-top: 0.5rem;
+    border: 1px solid #2a2a2a;
+    border-radius: 6px;
+    overflow: hidden;
+    width: fit-content;
+}
+.erd-ers-toggle button {
+    background: transparent;
+    border: none;
+    color: #888;
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    padding: 0.3rem 0.8rem;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.erd-ers-toggle button + button { border-left: 1px solid #2a2a2a; }
+.erd-ers-toggle button.active { background: rgba(110, 231, 183, 0.12); color: #6ee7b7; }
 
