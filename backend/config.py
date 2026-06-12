@@ -41,8 +41,11 @@ class Config:
     # Debug comparison views (see backend/model/template.py and pointcloud.py)
     pregap_mesh_ply_filename: str = os.getenv('PREGAP_MESH_PLY_FILENAME', 'brain_mesh_pregap_mapped.ply')
     template_mesh_ply_filename: str = os.getenv('TEMPLATE_MESH_PLY_FILENAME', 'template_destrieux_mapped.ply')
-    registered_mesh_ply_filename: str = os.getenv('REGISTERED_MESH_PLY_FILENAME', 'brain_mesh_registered_mapped.ply')
+    # Backup of the old, unregistered (affine-only resample) production output.
+    # The registered output takes the canonical filenames so the frontend loads it.
+    unregistered_mesh_ply_filename: str = os.getenv('UNREGISTERED_MESH_PLY_FILENAME', 'brain_mesh_unregistered_mapped.ply')
     output_json_filename: str = os.getenv('OUTPUT_JSON_FILENAME', 'region_metadata.json')
+    unregistered_json_filename: str = os.getenv('UNREGISTERED_JSON_FILENAME', 'region_metadata.unregistered.json')
 
     # --- Point Cloud Parameters ---
     threshold: float = float(os.getenv('THRESHOLD', '0.05'))
@@ -64,9 +67,13 @@ class Config:
     export_debug_views: bool = os.getenv('EXPORT_DEBUG_VIEWS', 'false').lower() in ('true', '1', 'yes')
 
     # --- Registration (proper subject<->MNI alignment, requires antspyx) ---
-    # When on (or when show_viewer is on), the pipeline also warps the atlas to
-    # the subject via ANTs and builds a 4th "registered" comparison view.
-    use_registration: bool = os.getenv('USE_REGISTRATION', 'false').lower() in ('true', '1', 'yes')
+    # On by default: the pipeline warps the atlas to the subject via ANTs and the
+    # registered result becomes the PRODUCTION SURFACE parcellation (canonical
+    # filenames the frontend loads); the old affine-only surface is kept as an
+    # *_unregistered backup. Set USE_REGISTRATION=false to skip (faster, but ships
+    # the mis-registered surface). Degrades gracefully if antspyx is missing.
+    # (Electrode->region mapping is independent — always done in native atlas space.)
+    use_registration: bool = os.getenv('USE_REGISTRATION', 'true').lower() in ('true', '1', 'yes')
     # 'Affine' = fast global fix; 'SyN'/'SyNRA' = + nonlinear refinement.
     registration_transform: str = os.getenv('REGISTRATION_TRANSFORM', 'Affine')
 
@@ -119,8 +126,12 @@ class Config:
         return os.path.join(self.brainmapping_export_dir, self.template_mesh_ply_filename)
 
     @property
-    def registered_mesh_ply_path(self) -> str:
-        return os.path.join(self.brainmapping_export_dir, self.registered_mesh_ply_filename)
+    def unregistered_mesh_ply_path(self) -> str:
+        return os.path.join(self.brainmapping_export_dir, self.unregistered_mesh_ply_filename)
+
+    @property
+    def unregistered_json_path(self) -> str:
+        return os.path.join(self.brainmapping_export_dir, self.unregistered_json_filename)
 
     @property
     def output_json_path(self) -> str:

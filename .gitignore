@@ -16,7 +16,8 @@ venv
 .next
 node_modules
 
-# Generated debug comparison views (regenerate via SHOW_VIEWER=true python -m backend.main)
+# Generated debug + backup views (regenerable via python -m backend.main)
 data/model/mapped/brainmapping_exports/brain_mesh_pregap_mapped.ply
 data/model/mapped/brainmapping_exports/template_destrieux_mapped.ply
-data/model/mapped/brainmapping_exports/brain_mesh_registered_mapped.ply
+data/model/mapped/brainmapping_exports/brain_mesh_unregistered_mapped.ply
+data/model/mapped/brainmapping_exports/region_metadata.unregistered.json

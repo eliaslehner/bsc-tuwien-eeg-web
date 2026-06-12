@@ -48,6 +48,43 @@ def fetch_and_resample_atlas(brain_nii_img):
     return atlas_data, names
 
 
+def fetch_destrieux_native():
+    """
+    Fetch the Destrieux 2009 atlas in its OWN (MNI152) space, un-resampled.
+
+    Used for electrode->region mapping: an electrode's MNI montage position and
+    the atlas both live in MNI space, so the region under an electrode is an
+    MNI-space question that must NOT go through the (mis-registered) subject grid.
+
+    Returns
+    -------
+    atlas_data : np.ndarray(int32) — labels in MNI space
+    affine     : np.ndarray(4, 4)  — MNI affine
+    names_map  : dict[int, str]
+    """
+    atlas = fetch_atlas_destrieux_2009(lateralized=True, verbose=0)
+    amaps = atlas["maps"]
+    atlas_img = nib.load(amaps) if isinstance(amaps, str) else amaps
+    atlas_data = np.asarray(atlas_img.dataobj, dtype=np.int32)
+    raw_labels = atlas["labels"]
+
+    names = {}
+    for uid in np.unique(atlas_data):
+        uid = int(uid)
+        if uid == 0:
+            continue
+        if uid < len(raw_labels):
+            lbl = raw_labels[uid]
+            if isinstance(lbl, (bytes, np.bytes_)):
+                lbl = lbl.decode('utf-8', errors='replace')
+            elif hasattr(lbl, '__iter__') and not isinstance(lbl, str):
+                lbl = str(lbl[-1]) if len(lbl) > 1 else str(lbl[0])
+            names[uid] = str(lbl)
+        else:
+            names[uid] = f"Region_{uid}"
+    return atlas_data, atlas_img.affine, names
+
+
 def registration_coverage(atlas_volume_raw, brain_mask):
     """
     Report how well the resampled atlas overlaps the subject brain.
