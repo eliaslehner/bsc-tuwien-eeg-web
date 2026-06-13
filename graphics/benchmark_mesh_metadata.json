@@ -1,0 +1,49 @@
+{
+  "old_version_provenance": {
+    "alpha_shapes_v1": {
+      "folder": "C:\\Users\\lenny\\Desktop\\VS Code\\BSc-EEG_01\\scripts",
+      "mesh_file": "PointCloud.py",
+      "region_file": "BrainRegions.py"
+    },
+    "alpha_shapes_v2": {
+      "folder": "C:\\Users\\lenny\\Desktop\\VS Code\\BSc-EEG_02\\scripts",
+      "mesh_file": "PointCloud.py",
+      "region_file": "BrainRegions.py"
+    },
+    "marching_cubes_v3": {
+      "folder": "C:\\Users\\lenny\\Desktop\\VS Code\\BSc-EEG_03\\backend",
+      "mesh_file": "model/pointcloud.py",
+      "config_file": "config.py"
+    }
+  },
+  "config": {
+    "brain_nii": "C:\\Users\\lenny\\Desktop\\VS Code\\bsc-tuwien-eeg-web\\data\\nfbs\\A00063008_NFB3_T1w_brain.nii",
+    "t1w_nii": "C:\\Users\\lenny\\Desktop\\VS Code\\bsc-tuwien-eeg-web\\data\\nfbs\\A00063008_NFB3_T1w.nii",
+    "mask_nii": "C:\\Users\\lenny\\Desktop\\VS Code\\bsc-tuwien-eeg-web\\data\\nfbs\\A00063008_NFB3_T1w_brainmask.nii",
+    "runs": 5,
+    "threshold": 0.05,
+    "position_noise": 0.3,
+    "alpha": 8.0,
+    "normal_radius": 1.5,
+    "normal_max_nn": 50,
+    "mc_level": 0.15,
+    "mc_step_size": 1,
+    "mesh_target_faces": 300000,
+    "seed": 20260607,
+    "skip_atlas": false,
+    "max_alpha_points": 0
+  },
+  "nifti_load_time_s": 0.8590244999504648,
+  "volume_shape": [
+    256,
+    256,
+    192
+  ],
+  "brain_voxels": 1308433,
+  "atlas_setup_time_s": 7.1435595999937505,
+  "atlas_stats": {
+    "names": 148,
+    "filled": 937714,
+    "total": 1308433
+  }
+}
