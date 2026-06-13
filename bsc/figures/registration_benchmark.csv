@@ -1,0 +1,4 @@
+method,outside_frac_pct,coverage_pct,com_offset_mm,runtime_s
+unregistered,50.821,28.333,34.679,0.311
+Affine,1.557,40.651,6.258,8.491
+SyN,0.267,38.284,6.039,21.876

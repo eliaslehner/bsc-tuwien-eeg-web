@@ -647,11 +647,13 @@ Counts total trials per class from the event stream. Used to populate the datase
 
 Removes EOG contamination from the EEG using `mne.preprocessing.EOGRegression`, which fits a linear regression model of the 3 EOG channels onto the 22 EEG channels and subtracts the predicted EOG component. This is the approach recommended by the dataset documentation ("linear regression"). Falls back to a 2 Hz highpass filter if the regression fails (e.g. if the EOG channels are flat or missing).
 
-##### `preprocess_raw(raw, eeg_channels, eog_channels)`
+##### `preprocess_raw(raw, eeg_channels, eog_channels, reference='csd')`
 
-Runs the full preprocessing sequence: EOG artifact removal → pick EEG channels only → **CAR re-referencing** → bandpass filter (0.5–40 Hz). The order matters — EOG regression needs both EEG and EOG channels present so channel picking happens after, and CAR must happen after picking so the average is computed over the 22 EEG channels only (not the EOG channels).
+Runs the full preprocessing sequence, parameterised by spatial reference.
 
-The CAR step (`raw.set_eeg_reference('average', projection=False)`) removes the hardware left-mastoid reference bias that is baked into the raw recordings. Without it, right-hemisphere amplitudes are systematically inflated relative to left-hemisphere amplitudes, which would cause the ERD/ERS heatmap to be asymmetric purely due to the reference geometry rather than any real lateralised brain activity.
+The default `reference='csd'` applies a **surface Laplacian (Current Source Density)**: pick the 22 EEG channels → set the standard 10-05 montage → `compute_current_source_density` → bandpass (0.5–40 Hz). CSD is reference-free and spatially sharpening — it suppresses volume conduction and localises focal sensorimotor (de)synchronisation, which gives crisp contralateral hand ERD and a clean central foot ERD on the heatmap. Because it is a spatial derivative it also attenuates the broad frontal EOG far-field, so explicit EOG regression is omitted on this path. This is the finished-product successor to CAR that was noted as the stronger option in the 23.03 progress entry.
+
+`reference='car'` keeps the earlier **Common Average Reference** path for comparison: EOG regression → pick the 22 EEG channels → `set_eeg_reference('average')` → bandpass. CAR removes the hardware left-mastoid bias, but averaged over only these 22 fronto-centro-parietal electrodes (no occipital/temporal coverage) it is a spatially biased reference, which is why the surface Laplacian is preferred for the production heatmap.
 
 ##### `create_epochs(raw, events, event_id, tmin, tmax)`
 
@@ -740,8 +742,9 @@ The `electrode_mappings` parameter comes from step 5 of the main pipeline (elect
 | Field | Default | Description |
 |---|---|---|
 | `EEG_DATA_DIR` | `./data/eeg` | Directory containing GDF files |
-| `EEG_SUBJECT` | `A01` | Subject ID (A01–A09) |
+| `EEG_SUBJECT` | `A03` | Subject ID (A01–A09); A03 = cleanest exemplar (see `select_subject.py`) |
 | `EEG_SESSION` | `T` | Session type (T = training, E = evaluation) |
+| `EEG_REFERENCE` | `csd` | Spatial reference: `csd` (surface Laplacian) or `car` |
 | `EEG_EPOCH_TMIN` | `−0.5` | Epoch start relative to cue (seconds) |
 | `EEG_EPOCH_TMAX` | `4.0` | Epoch end relative to cue (seconds) |
 | `EEG_BASELINE_TMIN` | `−0.5` | Baseline window start (seconds) |
@@ -780,7 +783,8 @@ Fixes a region-misplacement artefact — the superior frontal gyrus `g_front_sup
 
 | Module | What |
 |---|---|
-| `regions/registration.py` *(new)* | `register_atlas_to_subject` — registers the MNI152 template to the subject with **ANTs (`antspyx`)** and warps the atlas into subject voxel space, preserving the individual brain shape (only the labels move). `type_of_transform='Affine'` (default) or `'SyN'`/`'SyNRA'`. Graceful no-op if `antspyx` is absent. |
+| `regions/registration.py` *(new)* | `register_atlas_to_subject` — registers the MNI152 template to the subject with **ANTs (`antspyx`)** and warps the atlas into subject voxel space, preserving the individual brain shape (only the labels move). `type_of_transform='SyN'` (default) or `'Affine'`/`'SyNRA'`. Graceful no-op if `antspyx` is absent. |
+| `regions/benchmark_registration.py` *(new)* | Compares the transforms (`unregistered` / `Affine` / `SyN`) on the subject by outside-mask %, coverage % and runtime; `--plot` writes `bsc/figures/registration_benchmark.{png,csv}`. Justifies the SyN default. |
 | `model/template.py` *(new)* | `generate_template_view` — renders the (gap-filled) Destrieux atlas on the MNI152 template brain it was defined on, as a ground-truth reference, oriented to match the subject mesh convention. |
 | `regions/atlas.py` | `registration_coverage` — prints a per-run health line (% of brain labelled, % of labels outside the mask; warns when outside-mask > 15 %). `fetch_destrieux_native` — returns the atlas in its own MNI space + affine + names, for electrode mapping. |
 | `testing/diag_registration.py` *(new)* | Stand-alone diagnostic quantifying the misalignment (COM offset, outside-mask %, per-region world-x, hemisphere check). |
@@ -788,7 +792,7 @@ Fixes a region-misplacement artefact — the superior frontal gyrus `g_front_sup
 | `electrode/mapping.py` (§8) | `map_electrodes_to_regions(channel_coords, atlas_volume, affine, names_map)` — electrodes mapped in **native atlas space** and **projected radially** onto the nearest cortical crown (via a thin nearest-cortex shell), replacing ray-cast-to-centre. `run_electrode_pipeline` gains `output_path`, `electrode_atlas`, `electrode_affine`, `electrode_names`. |
 | `viewer/viewer.py` (§9) | `compare_views` + `--compare` — opens the debug meshes side by side (pre-gap \| unregistered \| production \| reference) in one window. |
 | `main.py` (§10) | Registration step; `atlas_production = registered or affine-only`; production drives the canonical mesh/JSON/electrodes; old affine-only output written as `*_unregistered` backups. |
-| `config.py` (§2) | `use_registration` (default **true**), `registration_transform`; `unregistered`/`pregap`/`template` mesh + json filenames and `*_path` properties. |
+| `config.py` (§2) | `use_registration` (default **true**), `registration_transform` (default **SyN**); `unregistered`/`pregap`/`template` mesh + json filenames and `*_path` properties. |
 
 ### Production flip & backups
 
@@ -802,7 +806,7 @@ Midline electrodes (Fz, FCz, Cz, CPz, Pz, POz; scalp x ≈ 0) straddle the longi
 
 | Decision | Rationale |
 |---|---|
-| **ANTs (`antspyx`) only; Affine→SyN one flag** | One dependency covers both affine and nonlinear. Affine alone drops outside-mask labels 50.8 % → 1.4 % and resolves the cross-midline bleed; SyN tightens the cortical fit to ~0.3 % with the same placement. |
+| **SyN default (ANTs); Affine a one-flag fallback** | One dependency (`antspyx`) covers both. The benchmark (`benchmark_registration.py`, figure in `bsc/figures/`) shows outside-mask labels of 50.8 % (unregistered) → 1.6 % (Affine) → **0.3 % (SyN)**; SyN gives the tightest, most anatomically faithful fit for a one-time ~+14 s, negligible for a viewer that serves static files, so it is the production default. |
 | **Warp atlas → subject (not subject → MNI)** | Preserves the individual brain shape from Marching Cubes; only the labels move. Keeps the Destrieux + stripped-model + Marching-Cubes design intact. |
 | **Registered = production, affine-only = backup** | The frontend auto-loads the fixed mapping under the canonical filenames; the old output stays on disk for reproducible before/after thesis figures. |
 | **Electrodes in native atlas space + radial projection** | Electrode→region is an atlas-space question (montage and atlas are both MNI/head-space; the subject brain is only the canvas). Radial projection onto the cortical crown fixes the central/midline electrodes the old ray-cast dragged into deep/medial structures. |

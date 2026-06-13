@@ -16,6 +16,8 @@ export default function DatasetPanel({
     setContrastMode,
     contrastOrder,
     setContrastOrder,
+    contrastPhenomenon,
+    setContrastPhenomenon,
     erdThreshold,
     setErdThreshold,
     multiView,
@@ -168,21 +170,22 @@ export default function DatasetPanel({
                         <span className="contrast-order-label">
                             {dataset.classes.find(c => c.id === contrastOrder[0])?.label ?? contrastOrder[0]}
                         </span>
-                        <span className="contrast-order-minus">−</span>
+                        <span className="contrast-order-vs">vs</span>
                         <span className="contrast-order-label">
                             {dataset.classes.find(c => c.id === contrastOrder[1])?.label ?? contrastOrder[1]}
                         </span>
+                    </div>
+                )}
+                {contrastMode && (
+                    <div className="erd-ers-toggle" role="group" aria-label="Contrast phenomenon">
                         <button
-                            className="contrast-swap-btn"
-                            onClick={() => setContrastOrder([contrastOrder[1], contrastOrder[0]])}
-                            title="Swap subtraction order"
-                        >
-                            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                                <path d="M3 2l-2 2 2 2"/>
-                                <path d="M9 6l2 2-2 2"/>
-                                <path d="M1 4h10M1 8h10"/>
-                            </svg>
-                        </button>
+                            className={contrastPhenomenon === 'erd' ? 'active' : ''}
+                            onClick={() => setContrastPhenomenon('erd')}
+                        >ERD</button>
+                        <button
+                            className={contrastPhenomenon === 'ers' ? 'active' : ''}
+                            onClick={() => setContrastPhenomenon('ers')}
+                        >ERS</button>
                     </div>
                 )}
             </div>

@@ -75,7 +75,10 @@ class Config:
     # (Electrode->region mapping is independent — always done in native atlas space.)
     use_registration: bool = os.getenv('USE_REGISTRATION', 'true').lower() in ('true', '1', 'yes')
     # 'Affine' = fast global fix; 'SyN'/'SyNRA' = + nonlinear refinement.
-    registration_transform: str = os.getenv('REGISTRATION_TRANSFORM', 'Affine')
+    # Default 'SyN': best atlas->subject alignment (0.3% vs 1.6% labels outside the
+    # brain mask for Affine) at a one-time ~+14 s cost — see
+    # backend/regions/benchmark_registration.py / bsc/figures/registration_benchmark.png.
+    registration_transform: str = os.getenv('REGISTRATION_TRANSFORM', 'SyN')
 
     # --- Device ---
     device: str = field(default_factory=lambda: _resolve_device(os.getenv('DEVICE', 'auto')))
@@ -93,8 +96,13 @@ class Config:
 
     # --- EEG Processing ---
     eeg_data_dir: str = os.getenv('EEG_DATA_DIR', './data/eeg')
-    eeg_subject: str = os.getenv('EEG_SUBJECT', 'A01')
+    # A03 is the default exemplar: selected as the cleanest subject (deepest
+    # contralateral hand ERD + correct-sign central feet ERD, replicates on the
+    # held-out E session) -- see backend/eeg/select_subject.py.
+    eeg_subject: str = os.getenv('EEG_SUBJECT', 'A03')
     eeg_session: str = os.getenv('EEG_SESSION', 'T')
+    # Spatial reference for ERD/ERS: 'csd' (surface Laplacian, default) or 'car'.
+    eeg_reference: str = os.getenv('EEG_REFERENCE', 'csd')
     eeg_epoch_tmin: float = float(os.getenv('EEG_EPOCH_TMIN', '-0.5'))
     eeg_epoch_tmax: float = float(os.getenv('EEG_EPOCH_TMAX', '4.0'))
     eeg_baseline_tmin: float = float(os.getenv('EEG_BASELINE_TMIN', '-0.5'))
