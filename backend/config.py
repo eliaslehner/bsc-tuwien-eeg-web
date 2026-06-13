@@ -75,7 +75,10 @@ class Config:
     # (Electrode->region mapping is independent — always done in native atlas space.)
     use_registration: bool = os.getenv('USE_REGISTRATION', 'true').lower() in ('true', '1', 'yes')
     # 'Affine' = fast global fix; 'SyN'/'SyNRA' = + nonlinear refinement.
-    registration_transform: str = os.getenv('REGISTRATION_TRANSFORM', 'Affine')
+    # Default 'SyN': best atlas->subject alignment (0.3% vs 1.6% labels outside the
+    # brain mask for Affine) at a one-time ~+14 s cost — see
+    # backend/regions/benchmark_registration.py / bsc/figures/registration_benchmark.png.
+    registration_transform: str = os.getenv('REGISTRATION_TRANSFORM', 'SyN')
 
     # --- Device ---
     device: str = field(default_factory=lambda: _resolve_device(os.getenv('DEVICE', 'auto')))
