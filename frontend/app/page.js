@@ -75,34 +75,47 @@ export default function Home() {
         
         const n_runs = eegData.dataset?.n_runs ?? 6;
         const result = { ...eegData, erd_ers: { ...eegData.erd_ers } };
-        
-        // We will mock the aggregated structure for Timeline and BrainViewer
-        // `avgClasses` will pretend to be the `bd.classes` containing `[n_ch, n_times]` arrays
-        
+
+        // The exported per-trial values are band power normalised to the class
+        // grand baseline (~1.0). We average the selected runs' trials and then
+        // apply ONE baseline ratio (Pfurtscheller's ERD/ERS), so run selection
+        // stays an exact ratio-of-means rather than a fragile mean-of-ratios.
+        const baselineWindow = eegData.trial_timeline?.baseline ?? [-0.5, 0.0];
+
         for (const band of ['mu', 'beta']) {
             if (!eegData.erd_ers[band]) continue;
-            
+
             const origClasses = eegData.erd_ers[band];
             const avgClasses = {};
-            
+
+            // Time bins inside the pre-cue baseline window.
+            const times = origClasses.times || [];
+            const baselineBins = [];
+            for (let t = 0; t < times.length; t++) {
+                if (times[t] >= baselineWindow[0] && times[t] < baselineWindow[1]) {
+                    baselineBins.push(t);
+                }
+            }
+
             for (const cn in origClasses) {
                 if (cn === 'times' || cn === 'range') continue;
-                
-                const trialsData = origClasses[cn]; // [n_trials, n_ch, n_times]
+
+                const trialsData = origClasses[cn]; // [n_trials, n_ch, n_times] norm. power
                 if (!trialsData || !trialsData.length) continue;
-                
+
                 const n_trials = trialsData.length;
                 const trials_per_run = Math.ceil(n_trials / n_runs);
                 const trialRunIds = eegData.trial_run_ids?.[cn];
                 const hasTrialRunIds = Array.isArray(trialRunIds)
                     && trialRunIds.length >= n_trials;
-                
+
                 const n_ch = trialsData[0].length;
                 const n_times = trialsData[0][0].length;
-                
+
+                // Sum normalised power across the selected runs' trials.
                 let sum = Array(n_ch).fill(0).map(() => Array(n_times).fill(0));
                 let count = 0;
-                
+
                 for (let i = 0; i < n_trials; i++) {
                     const run_idx = hasTrialRunIds
                         ? trialRunIds[i]
@@ -116,17 +129,26 @@ export default function Home() {
                         count++;
                     }
                 }
-                
+
+                // ERD/ERS = (meanPower - baseline) / baseline * 100. The trial
+                // count cancels, so we can work directly on the running totals.
                 if (count > 0) {
                     for (let c = 0; c < n_ch; c++) {
-                        for (let t = 0; t < n_times; t++) {
-                            sum[c][t] /= count;
+                        let baseline = 0;
+                        for (const t of baselineBins) baseline += sum[c][t];
+                        baseline = baselineBins.length ? baseline / baselineBins.length : 0;
+                        if (baseline > 0) {
+                            for (let t = 0; t < n_times; t++) {
+                                sum[c][t] = (sum[c][t] - baseline) / baseline * 100;
+                            }
+                        } else {
+                            for (let t = 0; t < n_times; t++) sum[c][t] = 0;
                         }
                     }
                 }
                 avgClasses[cn] = sum;
             }
-            
+
             result.erd_ers[band] = {
                 ...origClasses,
                 ...avgClasses

@@ -45,7 +45,9 @@ def build_eeg_json(dataset_info, session_events, erd_ers_data, channel_regions):
             arr = bd['classes'].get(cn)
             if arr is not None:
                 arr = np.asarray(arr)
-                entry[cn] = np.round(arr, 2).tolist()
+                # Per-trial power normalised to the class grand baseline (~1.0).
+                # 4 decimals keeps enough precision for the frontend ratio.
+                entry[cn] = np.round(arr, 4).tolist()
         erd_json[band_name] = entry
 
     return {
@@ -74,6 +76,10 @@ def build_eeg_json(dataset_info, session_events, erd_ers_data, channel_regions):
             cn: [int(run_id) for run_id in run_ids]
             for cn, run_ids in dataset_info.get('trial_run_ids', {}).items()
         },
+        # Per-trial values are band power normalised to the class grand baseline
+        # (baseline ~1.0). The frontend averages over the selected runs and then
+        # computes ERD/ERS = (mean_power - baseline) / baseline * 100.
+        'erd_ers_units': 'norm_power',
         'erd_ers': erd_json,
         'channel_regions': channel_regions,
     }
@@ -143,8 +149,11 @@ def generate_synthetic_data(channels=None, channel_regions=None):
                         s = c * scale * 0.8
                     else:  # tongue
                         s = 0.3 * scale
-                    data[t_idx, i] = erd_curve(times, peak=-45 * s + rng.normal(0, 3)) \
+                    erd_pct = erd_curve(times, peak=-45 * s + rng.normal(0, 3)) \
                         + rng.normal(0, 5, n_bins)
+                    # Express as power normalised to a ~1.0 baseline so the
+                    # frontend's (mean - baseline)/baseline ratio recovers erd_pct.
+                    data[t_idx, i] = np.maximum(1.0 + erd_pct / 100.0, 1e-3)
             classes[cn] = data
 
         erd_ers_data[band] = {'range': [lo, hi], 'times': times, 'classes': classes}

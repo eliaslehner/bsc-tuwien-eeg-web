@@ -9,7 +9,7 @@ from .loader import (
 )
 from .processing import (
     preprocess_raw, create_epochs,
-    compute_band_erd_ers, downsample_timecourse,
+    compute_band_normalized_power, downsample_timecourse,
     get_class_epoch_counts, get_class_epoch_run_ids,
 )
 from .export import (
@@ -73,21 +73,20 @@ def _process_gdf(config, gdf_path, channel_regions):
 
     erd_ers_data = {}
     for band_name, (lo, hi) in [('mu', config.eeg_mu_band), ('beta', config.eeg_beta_band)]:
-        print(f"  Computing {band_name} ({lo}-{hi} Hz) ERD/ERS...")
+        print(f"  Computing {band_name} ({lo}-{hi} Hz) band power...")
         band_raw = raw.copy().filter(lo, hi, verbose=False)
-        band_epochs = create_epochs(
+
+        norm_power, times = compute_band_normalized_power(
             band_raw, events, event_id,
             tmin=config.eeg_epoch_tmin, tmax=config.eeg_epoch_tmax,
+            baseline_tmin=config.eeg_baseline_tmin, baseline_tmax=config.eeg_baseline_tmax,
         )
-        if band_epochs is None:
+        if norm_power is None:
             continue
 
-        erd, times = compute_band_erd_ers(
-            band_epochs, config.eeg_baseline_tmin, config.eeg_baseline_tmax,
-        )
         ds_classes = {}
         ds_times = None
-        for cn, arr in erd.items():
+        for cn, arr in norm_power.items():
             ds_arr, ds_t = downsample_timecourse(arr, times, config.eeg_downsample_bins)
             ds_classes[cn] = ds_arr
             ds_times = ds_t

@@ -85,42 +85,65 @@ def create_epochs(raw, events, event_id, tmin=-0.5, tmax=4.0):
     return epochs
 
 
-def compute_band_erd_ers(epochs, baseline_tmin, baseline_tmax):
+def compute_band_normalized_power(band_raw, events, event_id,
+                                  tmin, tmax, baseline_tmin, baseline_tmax):
     """
-    Compute ERD/ERS (%) for already band-filtered epochs via Hilbert transform.
-    Computes it per-trial.
+    Compute per-trial band power, normalised to the per-class grand baseline.
+
+    The Hilbert envelope power is taken from the CONTINUOUS band-filtered signal
+    and only then epoched. Computing power on the continuous signal avoids the
+    transform/edge artefacts that arise when the Hilbert transform is applied to
+    each short epoch independently.
+
+    Each trial's power is divided by its class grand baseline — the mean
+    baseline-window power across *all* of that class's trials, per channel. The
+    grand baseline is a stable, strictly-positive scalar (a per-trial baseline,
+    by contrast, can be tiny and make a ratio explode). Dividing by a constant
+    keeps the exported values O(1) while letting the frontend recover the exact
+    ratio-of-means ERD/ERS over any subset of trials:
+
+        ERD/ERS(t) = (mean_power(t) - baseline) / baseline * 100
+
+    The constant grand-baseline divisor cancels in that ratio, so this is the
+    standard Pfurtscheller method (average power across trials, one baseline
+    ratio) — just deferred to the frontend so run selection stays exact.
 
     Returns
     -------
-    erd_ers : dict — class_name -> np.ndarray (n_trials, n_channels, n_times)
+    norm_power : dict — class_name -> np.ndarray (n_trials, n_channels, n_times)
     times : np.ndarray
     """
-    times = epochs.times
+    # Continuous Hilbert power, then epoch (no per-epoch transform edges).
+    power_data = np.abs(hilbert(band_raw.get_data(), axis=-1)) ** 2
+    power_raw = mne.io.RawArray(power_data, band_raw.info, verbose=False)
+
+    power_epochs = create_epochs(power_raw, events, event_id, tmin=tmin, tmax=tmax)
+    if power_epochs is None:
+        return None, None
+
+    times = power_epochs.times
     bl_mask = (times >= baseline_tmin) & (times < baseline_tmax)
 
-    erd_ers = {}
+    norm_power = {}
 
-    for gdf_key in epochs.event_id:
+    for gdf_key in power_epochs.event_id:
         class_name = class_for_annotation_key(gdf_key)
         if not class_name:
             continue
 
-        class_ep = epochs[gdf_key]
+        class_ep = power_epochs[gdf_key]
         if len(class_ep) == 0:
             continue
 
-        data = class_ep.get_data()  # (n_trials, n_channels, n_times)
+        power = class_ep.get_data()  # (n_trials, n_channels, n_times)
 
-        power = np.abs(hilbert(data, axis=-1)) ** 2  # (n_trials, n_channels, n_times)
+        # Grand baseline per channel: mean over all trials and baseline samples.
+        grand_baseline = power[:, :, bl_mask].mean(axis=(0, 2))  # (n_channels,)
+        grand_baseline = np.maximum(grand_baseline, np.finfo(float).tiny)
 
-        # Baseline per trial
-        baseline = power[:, :, bl_mask].mean(axis=-1, keepdims=True)
-        baseline = np.maximum(baseline, np.finfo(float).tiny)
+        norm_power[class_name] = power / grand_baseline[np.newaxis, :, np.newaxis]
 
-        trial_erd_ers = (power - baseline) / baseline * 100.0
-        erd_ers[class_name] = trial_erd_ers
-
-    return erd_ers, times
+    return norm_power, times
 
 
 def downsample_timecourse(data, times, n_bins):
