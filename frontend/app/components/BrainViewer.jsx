@@ -564,9 +564,12 @@ export default function BrainViewer({
                     const { magnitude, winner } = contrastWinner(hv, cx.phenomenon);
                     if (magnitude > 0) {
                         const lbl = winner === 'a' ? cx.labelA : cx.labelB;
-                        // Keep it readable at a glance: the colour already shows
-                        // intensity, so the tooltip just names the dominant class.
-                        tooltipText += ` — ${lbl} (${cx.phenomenon.toUpperCase()})`;
+                        // Show the dominant class's OWN ERD/ERS for this region —
+                        // the same quantity the timeline curve plots, so the
+                        // tooltip lines up with it (not the inter-class difference).
+                        const wv = winner === 'a' ? hv.a : hv.b;
+                        const sign = wv > 0 ? '+' : '';
+                        tooltipText += ` — ${lbl} ${sign}${wv.toFixed(1)}%`;
                     }
                 } else if (typeof hv === 'number') {
                     const sign = hv > 0 ? '+' : '';

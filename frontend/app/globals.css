@@ -1007,6 +1007,7 @@ body {
 .contrast-order {
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 6px;
     margin-top: 0.5rem;
     padding: 0.5rem 0.6rem;
