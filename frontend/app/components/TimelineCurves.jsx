@@ -79,7 +79,9 @@ export default function TimelineCurves({
         const c1 = curves[contrastOrder[0]];
         const c2 = curves[contrastOrder[1]];
         if (!c1 || !c2 || c1.individual || c2.individual) return null;
-        return c1.map((v, i) => v - c2[i]);
+        // Absolute difference: the contrast is order-independent (the brain colours
+        // by the stronger class either way), so the curve shows the magnitude only.
+        return c1.map((v, i) => Math.abs(v - c2[i]));
     }, [contrastMode, contrastOrder, curves]);
 
     const yRange = useMemo(() => {
@@ -560,7 +562,7 @@ export default function TimelineCurves({
             if (diffCurve) {
                 const diffColor = '#6ee7b7';
                 const val = diffCurve[currentTimeIndex];
-                let text = `Diff ${val !== undefined ? (val >= 0 ? '+' : '') + val.toFixed(1) + '%' : ''}`;
+                let text = `Diff ${val !== undefined ? val.toFixed(1) + '%' : ''}`;
                 const tw = ctx.measureText(text).width;
                 const lx = w - pad.right - 8;
                 ctx.fillStyle = 'rgba(0,0,0,0.6)';

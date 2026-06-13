@@ -564,7 +564,9 @@ export default function BrainViewer({
                     const { magnitude, winner } = contrastWinner(hv, cx.phenomenon);
                     if (magnitude > 0) {
                         const lbl = winner === 'a' ? cx.labelA : cx.labelB;
-                        tooltipText += ` — ${lbl} (${cx.phenomenon.toUpperCase()}) ${magnitude.toFixed(1)}%`;
+                        // Keep it readable at a glance: the colour already shows
+                        // intensity, so the tooltip just names the dominant class.
+                        tooltipText += ` — ${lbl} (${cx.phenomenon.toUpperCase()})`;
                     }
                 } else if (typeof hv === 'number') {
                     const sign = hv > 0 ? '+' : '';
