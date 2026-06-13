@@ -740,8 +740,9 @@ The `electrode_mappings` parameter comes from step 5 of the main pipeline (elect
 | Field | Default | Description |
 |---|---|---|
 | `EEG_DATA_DIR` | `./data/eeg` | Directory containing GDF files |
-| `EEG_SUBJECT` | `A01` | Subject ID (A01–A09) |
+| `EEG_SUBJECT` | `A03` | Subject ID (A01–A09); A03 = cleanest exemplar (see `select_subject.py`) |
 | `EEG_SESSION` | `T` | Session type (T = training, E = evaluation) |
+| `EEG_REFERENCE` | `csd` | Spatial reference: `csd` (surface Laplacian) or `car` |
 | `EEG_EPOCH_TMIN` | `−0.5` | Epoch start relative to cue (seconds) |
 | `EEG_EPOCH_TMAX` | `4.0` | Epoch end relative to cue (seconds) |
 | `EEG_BASELINE_TMIN` | `−0.5` | Baseline window start (seconds) |

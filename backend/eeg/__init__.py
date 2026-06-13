@@ -50,8 +50,8 @@ def _process_gdf(config, gdf_path, channel_regions):
     session_events = extract_session_events(events, event_id, raw.info['sfreq'])
     print(f"  Trials per class: {trial_counts}")
 
-    print("  Preprocessing (EOG removal, filtering)...")
-    raw = preprocess_raw(raw, eeg_channels, eog_channels)
+    print(f"  Preprocessing (reference={config.eeg_reference}, filtering)...")
+    raw = preprocess_raw(raw, eeg_channels, eog_channels, reference=config.eeg_reference)
 
     print("  Creating broadband epochs for trial counts...")
     broadband_epochs = create_epochs(
@@ -70,6 +70,11 @@ def _process_gdf(config, gdf_path, channel_regions):
         if trial_run_ids else 6
     )
     print(f"  Clean trials: {clean_counts}")
+
+    ref_label = {
+        'csd': 'CSD (surface Laplacian)',
+        'car': 'CAR (common average reference)',
+    }.get(config.eeg_reference, config.eeg_reference.upper())
 
     erd_ers_data = {}
     for band_name, (lo, hi) in [('mu', config.eeg_mu_band), ('beta', config.eeg_beta_band)]:
@@ -100,7 +105,8 @@ def _process_gdf(config, gdf_path, channel_regions):
         'description': (
             f'Motor imagery EEG, subject {config.eeg_subject}, '
             f'session {config.eeg_session}. 4 classes: left hand, right hand, '
-            f'feet, tongue. 22 channels at {raw.info["sfreq"]} Hz.'
+            f'feet, tongue. 22 channels at {raw.info["sfreq"]} Hz. '
+            f'Reference: {ref_label}.'
         ),
         'subject': config.eeg_subject,
         'session': config.eeg_session,

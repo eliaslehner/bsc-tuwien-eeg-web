@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import BrainViewer from './components/BrainViewer';
 import DatasetPanel from './components/DatasetPanel';
 import Timeline from './components/Timeline';
@@ -40,6 +40,24 @@ export default function Home() {
         if (!nRuns) return;
         setSelectedRuns(new Set(Array.from({ length: nRuns }, (_, i) => i)));
     }, [eegData?.dataset?.n_runs]);
+
+    // On first load, place the playhead at a post-cue active moment (~1.0 s)
+    // instead of t=-0.5 s (the baseline), where ERD/ERS is ~0 and the brain
+    // overlay renders flat. The timeline axis still starts at -0.5 s; this only
+    // moves the initial marker. Runs once, so it never overrides user scrubbing.
+    const didInitTime = useRef(false);
+    useEffect(() => {
+        if (didInitTime.current) return;
+        const times = eegData?.erd_ers?.[selectedBand]?.times;
+        if (!times?.length) return;
+        const target = 1.0; // seconds after cue
+        let best = 0;
+        for (let i = 1; i < times.length; i++) {
+            if (Math.abs(times[i] - target) < Math.abs(times[best] - target)) best = i;
+        }
+        setCurrentTimeIndex(best);
+        didInitTime.current = true;
+    }, [eegData, selectedBand]);
 
     const handleRegionHover = useCallback(
         (name) => setActiveRegion(name),
