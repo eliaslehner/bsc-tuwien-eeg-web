@@ -139,8 +139,7 @@ bsc-tuwien-eeg-web/
 |-- data/
 |   |-- eeg/
 |   |   |-- README.md
-|   |   |-- A01T.gdf                   Included BCI Competition IV-2a training file
-|   |   `-- A01E.gdf                   Included BCI Competition IV-2a evaluation file
+|   |   `-- A03T.gdf                   Included BCI Competition IV-2a training file (subject A03, default exemplar)
 |   |-- img/
 |   |   |-- brainviewer.png            Frontend screenshot used in this README
 |   |   |-- Placement_Electrodes.png
@@ -227,12 +226,11 @@ The repository includes the sample NIfTI volumes used by the backend pipeline in
 - `A00063008_NFB3_T1w_brain.nii` -- Skull-stripped brain volume
 - `A00063008_NFB3_T1w_brainmask.nii` -- Binary brain mask
 
-The repository also includes two BCI Competition IV-2a GDF files in `data/eeg/`:
+The repository includes one BCI Competition IV-2a GDF file in `data/eeg/`:
 
-- `A01T.gdf` -- Subject 1 training session
-- `A01E.gdf` -- Subject 1 evaluation session
+- `A03T.gdf` -- Subject A03 training session, the **default exemplar**. A03 was selected as the cleanest motor-imagery recording (strongest contralateral hand ERD, correct central foot ERD) by an objective benchmark over all nine subjects; see `bsc/EEG_Subject_Selection.md` and `backend/eeg/select_subject.py`.
 
-To use different subjects or sessions, add the corresponding GDF files to `data/eeg/` and update `EEG_SUBJECT` and `EEG_SESSION` in `backend/.env`.
+To use a different subject or session, add the corresponding GDF file to `data/eeg/` and update `EEG_SUBJECT` and `EEG_SESSION` in `backend/.env`.
 
 ---
 
@@ -257,6 +255,9 @@ Key configuration options:
 | `SHOW_VIEWER` | Launch Open3D viewer after pipeline | `false` |
 | `COPY_MAPPED_MESH_TO_FRONTEND` | Auto-copy PLY to frontend public dir | `false` |
 | `EEG_CHANNELS` | Comma-separated list of 10-20 channel names | 22-channel standard set |
+| `EEG_SUBJECT` | BCI IV-2a subject ID; default is the A03 exemplar | `A03` |
+| `EEG_REFERENCE` | EEG spatial reference: `csd` (surface Laplacian) or `car` | `csd` |
+| `REGISTRATION_TRANSFORM` | Atlas→subject registration: `SyN` (nonlinear) or `Affine` | `SyN` |
 
 See `backend/.env.example` for the full list of options with descriptions.
 
@@ -322,7 +323,7 @@ The visualisation framework is designed around the **BCI Competition IV-2a datas
 - **Electrodes**: 22 Ag/AgCl channels (international 10-20 system)
 - **Sampling rate**: 250 Hz
 - **Bandpass filter**: 0.5--100 Hz (recording), 8--30 Hz (Mu/Beta isolation for MI analysis)
-- **Included files**: `data/eeg/A01T.gdf`, `data/eeg/A01E.gdf`
+- **Included file**: `data/eeg/A03T.gdf` (subject A03 training session — the default exemplar)
 - **License**: [Creative Commons Attribution No Derivatives 4.0 International (CC BY-ND 4.0)](https://creativecommons.org/licenses/by-nd/4.0/)
 - **Licensor**: Institute for Knowledge Discovery, Graz University of Technology
 
